@@ -3,18 +3,11 @@ import { FileUploader } from './components/FileUploader';
 import { PromptInput } from './components/PromptInput';
 import { FileExplorer } from './components/FileExplorer';
 import { FilePreview } from './components/FilePreview';
-import { Button } from './components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from './components/ui/dialog';
-import { Gift } from 'lucide-react';
+import { HistoryPanel } from './components/HistoryPanel';
+import { ConsoleOutput } from './components/ConsoleOutput';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
-import qrCode from 'figma:asset/dea850b023f7f1cbbc3378bbd2cedd67c865d9f2.png';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import API_CONFIG from './config/api';
 
 interface FileNode {
@@ -27,16 +20,20 @@ interface FileNode {
 const API_BASE_URL = API_CONFIG.BASE_URL;
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('current');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedFilePath, setUploadedFilePath] = useState<string>('');
+  const [originalFilename, setOriginalFilename] = useState<string>('');
   const [prompt, setPrompt] = useState('<image>\n<|grounding|>Convert the document to markdown.');
   const [isProcessing, setIsProcessing] = useState(false);
   const [taskId, setTaskId] = useState<string>('');
   const [resultDir, setResultDir] = useState<string>('');
   const [parseCompleted, setParseCompleted] = useState(false);
   const [selectedPreviewFile, setSelectedPreviewFile] = useState<any>(null);
-  const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
+  const [consoleMessages, setConsoleMessages] = useState<string[]>([]);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [totalRuntime, setTotalRuntime] = useState<number | null>(null);
 
   const handleFileChange = async (file: File | null) => {
     setUploadedFile(file);
@@ -46,8 +43,12 @@ export default function App() {
       setSelectedPreviewFile(null);
       setIsProcessing(false);
       setUploadedFilePath('');
+      setOriginalFilename('');
       setTaskId('');
       setResultDir('');
+      setConsoleMessages([]);
+      setElapsedTime(0);
+      setTotalRuntime(null);
     } else {
       // Upload file to backend
       try {
@@ -62,16 +63,17 @@ export default function App() {
         const data = await response.json();
         if (data.status === 'success') {
           setUploadedFilePath(data.file_path);
-          toast.success('文件上传成功', {
-            description: `已上传 ${file.name}`,
+          setOriginalFilename(data.original_filename || file.name);
+          toast.success('File uploaded successfully', {
+            description: `Uploaded ${file.name}`,
           });
         } else {
-          toast.error('文件上传失败');
+          toast.error('File upload failed');
         }
       } catch (error) {
         console.error('Upload error:', error);
-        toast.error('文件上传失败', {
-          description: '无法连接到后端服务',
+        toast.error('File upload failed', {
+          description: 'Unable to connect to backend service',
         });
       }
     }
@@ -79,13 +81,22 @@ export default function App() {
 
   const handleStartParsing = async () => {
     if (!uploadedFilePath) {
-      toast.error('请先上传文件');
+      toast.error('Please upload a file first');
       return;
     }
 
     setIsProcessing(true);
     setParseCompleted(false);
     setResultDir('');
+    setConsoleMessages([]);
+    setElapsedTime(0);
+    setTotalRuntime(null);
+
+    // Start elapsed time counter
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/start`, {
@@ -96,6 +107,7 @@ export default function App() {
         body: JSON.stringify({
           file_path: uploadedFilePath,
           prompt: prompt,
+          original_filename: originalFilename,
         }),
       });
 
@@ -103,7 +115,20 @@ export default function App() {
       if (data.status === 'running' && data.task_id) {
         setTaskId(data.task_id);
         
-        let isTaskFinished = false;
+        // Connect to console WebSocket
+        const wsUrl = `${API_BASE_URL.replace('http', 'ws')}/ws/console/${data.task_id}`;
+        const ws = new WebSocket(wsUrl);
+        
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === 'log') {
+            setConsoleMessages(prev => [...prev, message.content]);
+          }
+        };
+        
+        ws.onerror = () => {
+          console.log('Console WebSocket connection failed (optional feature)');
+        };
         
         // Poll for completion from backend
         const pollInterval = setInterval(async () => {
@@ -112,8 +137,9 @@ export default function App() {
             const progressData = await progressRes.json();
             
             if (progressData.status === 'success' && progressData.state === 'finished') {
-              isTaskFinished = true;
               clearInterval(pollInterval);
+              clearInterval(timerInterval);
+              ws.close();
               setIsProcessing(false);
               
               // Fetch result
@@ -123,8 +149,10 @@ export default function App() {
               if (resultData.status === 'success' && resultData.state === 'finished') {
                 setResultDir(resultData.result_dir);
                 setParseCompleted(true);
-                toast.success('解析完成！', {
-                  description: '已经顺利完成解析',
+                const runtime = resultData.runtime || Math.floor((Date.now() - startTime) / 1000);
+                setTotalRuntime(runtime);
+                toast.success('Processing complete!', {
+                  description: `Finished in ${formatTime(runtime)}`,
                 });
               }
             }
@@ -133,114 +161,132 @@ export default function App() {
           }
         }, 2000); // Poll every 2 seconds
       } else {
-        toast.error('启动解析任务失败');
+        clearInterval(timerInterval);
+        toast.error('Failed to start processing task');
         setIsProcessing(false);
       }
     } catch (error) {
+      clearInterval(timerInterval);
       console.error('Parse error:', error);
-      toast.error('解析失败', {
-        description: '无法连接到后端服务',
+      toast.error('Processing failed', {
+        description: 'Unable to connect to backend service',
       });
       setIsProcessing(false);
     }
   };
 
-  const handleGetSourceCode = () => {
-    setIsQrDialogOpen(true);
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins > 0) {
+      return `${mins}m ${secs}s`;
+    }
+    return `${secs}s`;
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-teal-50">
       <Toaster position="top-right" />
       
-      {/* Header */}
+      {/* Header with Tabs */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="container mx-auto px-8 py-4 flex items-center justify-between">
-          <div className="text-teal-700 font-semibold">
-            《大模型Agent开发实战》体验课
+        <div className="container mx-auto px-8 py-3 flex items-center justify-between">
+          <h1 className="text-2xl text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-cyan-600 font-semibold">
+            DeepSeek OCR
+          </h1>
+          
+          {/* Navigation Tabs in Header */}
+          <div className="flex items-center gap-1 bg-gray-100/80 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('current')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all cursor-pointer ${
+                activeTab === 'current'
+                  ? 'bg-white text-teal-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+              }`}
+            >
+              Current Job
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all cursor-pointer ${
+                activeTab === 'history'
+                  ? 'bg-white text-teal-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+              }`}
+            >
+              History
+            </button>
           </div>
-          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
-            <h1 className="text-2xl text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-cyan-600 font-semibold">
-              DeepSeek OCR识别检测
-            </h1>
-            <span className="text-xs text-gray-500">by 九天Hector</span>
-          </div>
-          <Button
-            onClick={handleGetSourceCode}
-            className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-md transition-all hover:shadow-lg hover:scale-105 font-semibold cursor-pointer"
-          >
-            <Gift className="mr-2 h-4 w-4" />
-            领取项目源码
-          </Button>
+          
+          {/* Spacer to balance the header */}
+          <div className="w-[140px]"></div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-8 py-6">
-        <div className="grid grid-cols-2 gap-6 h-[calc(100vh-120px)]">
-          {/* Left Panel - File Upload */}
-          <div className="flex flex-col min-h-0">
-            <FileUploader onFileChange={handleFileChange} />
-          </div>
+        {activeTab === 'current' ? (
+          <div className="grid grid-cols-2 gap-6 h-[calc(100vh-100px)]">
+            {/* Left Panel - File Upload */}
+            <div className="flex flex-col min-h-0">
+              <FileUploader onFileChange={handleFileChange} />
+            </div>
 
-          {/* Right Panel - Results */}
-          <div className="flex flex-col gap-4 min-h-0">
-            {/* Prompt Input and File Explorer in Tabs */}
-            <div 
-              className={`flex gap-4 flex-shrink-0 transition-all duration-300 overflow-hidden ${
-                isPreviewExpanded ? 'h-0 opacity-0' : 'h-[280px] opacity-100'
-              }`}
-            >
+            {/* Right Panel - Results */}
+            <div className="flex flex-col gap-4 min-h-0">
+              {/* Prompt Input and File Explorer */}
+              <div 
+                className={`flex gap-4 flex-shrink-0 transition-all duration-300 overflow-hidden ${
+                  isPreviewExpanded ? 'h-0 opacity-0' : 'h-[280px] opacity-100'
+                }`}
+              >
+                <div className="flex-1 min-h-0">
+                  <PromptInput
+                    prompt={prompt}
+                    onPromptChange={setPrompt}
+                    onParse={handleStartParsing}
+                    isProcessing={isProcessing}
+                    hasFile={!!uploadedFile}
+                    isCompact={isPreviewExpanded}
+                    elapsedTime={isProcessing ? elapsedTime : undefined}
+                    totalRuntime={totalRuntime}
+                  />
+                </div>
+                <div className="w-[320px] min-h-0">
+                  <FileExplorer
+                    onFileSelect={setSelectedPreviewFile}
+                    selectedFile={selectedPreviewFile}
+                    parseCompleted={parseCompleted}
+                    resultDir={resultDir}
+                    taskId={taskId}
+                  />
+                </div>
+              </div>
+
+              {/* Console Output - only show during processing */}
+              {isProcessing && consoleMessages.length > 0 && (
+                <div className="h-[150px] flex-shrink-0">
+                  <ConsoleOutput messages={consoleMessages} />
+                </div>
+              )}
+
+              {/* File Preview */}
               <div className="flex-1 min-h-0">
-                <PromptInput
-                  prompt={prompt}
-                  onPromptChange={setPrompt}
-                  onParse={handleStartParsing}
-                  isProcessing={isProcessing}
-                  hasFile={!!uploadedFile}
-                  isCompact={isPreviewExpanded}
+                <FilePreview 
+                  file={selectedPreviewFile}
+                  isExpanded={isPreviewExpanded}
+                  onToggleExpand={() => setIsPreviewExpanded(!isPreviewExpanded)}
                 />
               </div>
-              <div className="w-[320px] min-h-0">
-                <FileExplorer
-                  onFileSelect={setSelectedPreviewFile}
-                  selectedFile={selectedPreviewFile}
-                  parseCompleted={parseCompleted}
-                  resultDir={resultDir}
-                />
-              </div>
-            </div>
-
-            {/* File Preview */}
-            <div className="flex-1 min-h-0">
-              <FilePreview 
-                file={selectedPreviewFile}
-                isExpanded={isPreviewExpanded}
-                onToggleExpand={() => setIsPreviewExpanded(!isPreviewExpanded)}
-              />
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="h-[calc(100vh-100px)]">
+            <HistoryPanel />
+          </div>
+        )}
       </main>
-
-      {/* QR Code Dialog */}
-      <Dialog open={isQrDialogOpen} onOpenChange={setIsQrDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center text-xl font-semibold bg-gradient-to-r from-teal-600 to-cyan-600 bg-clip-text text-transparent">
-              扫码免费领取项目源码
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-6">
-            <div className="bg-white p-4 rounded-xl shadow-md">
-              <img src={qrCode} alt="QR Code" className="w-64 h-64" />
-            </div>
-            <p className="text-sm text-gray-500 text-center">
-              使用微信扫描二维码即可获取完整项目源码
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -38,7 +38,7 @@ export function FileUploader({ onFileChange }: FileUploaderProps) {
           onClick={() => document.getElementById('file-input')?.click()}
         >
           <Upload className="mr-2 h-5 w-5" />
-          上传文件（PDF / PNG / JPG）
+          Upload File (PDF / PNG / JPG)
         </Button>
         <input
           id="file-input"
@@ -71,7 +71,7 @@ export function FileUploader({ onFileChange }: FileUploaderProps) {
                       title="PDF Preview"
                     />
                     <p className="text-xs text-gray-500 text-center mt-2">
-                      💡 提示：可以在 PDF 查看器中滚动、缩放和导航
+                      Tip: You can scroll, zoom, and navigate within the PDF viewer
                     </p>
                   </div>
                 ) : (
@@ -86,7 +86,7 @@ export function FileUploader({ onFileChange }: FileUploaderProps) {
               <div className="flex items-center justify-center min-h-[400px]">
                 <div className="text-center text-gray-400">
                   <Upload className="h-16 w-16 mx-auto mb-4 opacity-30" />
-                  <p>请上传文件以预览</p>
+                  <p>Upload a file to preview</p>
                 </div>
               </div>
             )}

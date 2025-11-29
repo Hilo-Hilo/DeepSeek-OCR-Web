@@ -34,13 +34,16 @@ def detect_file_type(file_path: str) -> str:
 
 
 # ========== Step 2. 保存上传文件 ==========
-def save_uploaded_file(file, filename: str = None) -> Tuple[str, str]:
+def save_uploaded_file(file, filename: str = None) -> Tuple[str, str, str]:
     """
     保存上传文件到 workspace/uploads/
     - 自动生成唯一文件名（避免重复）
-    - 返回保存路径与文件类型
+    - 返回: (保存路径, 文件类型, 原始文件名)
     """
     os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
+    # Store original filename
+    original_filename = file.filename
     
     # 生成唯一文件名
     ext = Path(file.filename).suffix
@@ -56,9 +59,9 @@ def save_uploaded_file(file, filename: str = None) -> Tuple[str, str]:
     
     file_type = detect_file_type(str(file_path))
     
-    print(f"📤 文件已保存: {file_path} ({file_type})")
+    print(f"📤 文件已保存: {file_path} ({file_type}) - Original: {original_filename}")
     
-    return str(file_path), file_type
+    return str(file_path), file_type, original_filename
 
 
 # ========== Step 3. 创建结果目录 ==========

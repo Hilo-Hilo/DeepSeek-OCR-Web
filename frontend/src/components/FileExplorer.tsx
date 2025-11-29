@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Folder, FileText, Image, FileType, ChevronRight, ChevronDown, Download } from 'lucide-react';
+import { Folder, FileText, Image, FileType, ChevronRight, ChevronDown, Download, ChevronDownIcon } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import { toast } from 'sonner@2.0.3';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import API_CONFIG from '../config/api';
 
 const API_BASE_URL = API_CONFIG.BASE_URL;
@@ -41,9 +47,10 @@ interface FileExplorerProps {
   selectedFile: FileNode | null;
   parseCompleted: boolean;
   resultDir: string;
+  taskId?: string;
 }
 
-export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resultDir }: FileExplorerProps) {
+export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resultDir, taskId }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [fileStructure, setFileStructure] = useState<FileNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -100,7 +107,7 @@ export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resul
       }
     } catch (error) {
       console.error('Failed to fetch folder structure:', error);
-      toast.error('文件夹结构加载失败');
+      toast.error('Failed to load folder structure');
     } finally {
       setIsLoading(false);
     }
@@ -187,7 +194,7 @@ export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resul
       }
     } catch (error) {
       console.error('Failed to fetch file content:', error);
-      toast.error('文件加载失败');
+      toast.error('Failed to load file');
     }
   };
 
@@ -234,74 +241,68 @@ export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resul
     );
   };
 
-  const handleDownloadAll = async () => {
-    // Download all files from the file structure
-    const getAllFiles = (nodes: FileNode[]): FileNode[] => {
-      let files: FileNode[] = [];
-      nodes.forEach(node => {
-        if (node.type === 'file') {
-          files.push(node);
-        } else if (node.children) {
-          files = files.concat(getAllFiles(node.children));
-        }
-      });
-      return files;
-    };
-
-    const allFiles = getAllFiles(fileStructure);
-    
-    for (const file of allFiles) {
-      if (file.path) {
-        try {
-          const response = await fetch(`${API_BASE_URL}/api/file/content?path=${encodeURIComponent(file.path)}`);
-          
-          if (file.fileType === 'image') {
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = file.name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          } else {
-            const data = await response.json();
-            const blob = new Blob([data.content], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = file.name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          }
-        } catch (error) {
-          console.error(`Failed to download ${file.name}:`, error);
-        }
-      }
+  const handleDownloadZip = async (format: 'mmd' | 'md' | 'txt') => {
+    if (!taskId) {
+      toast.error('No task ID available');
+      return;
     }
-    
-    toast.success('所有文件下载成功', {
-      description: `共下载 ${allFiles.length} 个文件`,
-    });
+
+    try {
+      toast.info('Preparing download...', { duration: 2000 });
+      const response = await fetch(`${API_BASE_URL}/api/download/zip/${taskId}?format=${format}`);
+      
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+      
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ocr_results_${taskId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Download complete', {
+        description: `Downloaded as .${format} format`,
+      });
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Download failed');
+    }
   };
 
   return (
     <div className="bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200 shadow-lg overflow-hidden h-full flex flex-col">
       <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
-        <h3 className="text-sm text-gray-700">文件浏览器</h3>
+        <h3 className="text-sm text-gray-700">File Explorer</h3>
         {parseCompleted && fileStructure.length > 0 && (
-          <Button
-            onClick={handleDownloadAll}
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 p-0 hover:bg-teal-50 hover:text-teal-600 transition-all cursor-pointer"
-            title="下载全部文件"
-          >
-            <Download className="h-4 w-4" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 hover:bg-teal-50 hover:text-teal-600 transition-all cursor-pointer"
+                title="Download all files"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                <ChevronDownIcon className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleDownloadZip('mmd')} className="cursor-pointer">
+                Download as .mmd (MultiMarkdown)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDownloadZip('md')} className="cursor-pointer">
+                Download as .md (Markdown)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDownloadZip('txt')} className="cursor-pointer">
+                Download as .txt (Plain Text)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
       <div className="flex-1 min-h-0">
@@ -310,7 +311,7 @@ export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resul
             <div className="flex items-center justify-center h-full min-h-[200px]">
               <div className="text-center text-gray-400">
                 <Folder className="h-12 w-12 mx-auto mb-3 opacity-30 animate-pulse" />
-                <p className="text-sm">加载文件结构...</p>
+                <p className="text-sm">Loading file structure...</p>
               </div>
             </div>
           ) : parseCompleted && fileStructure.length > 0 ? (
@@ -319,7 +320,7 @@ export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resul
             <div className="flex items-center justify-center h-full min-h-[200px]">
               <div className="text-center text-gray-400">
                 <Folder className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">等待文件解析...</p>
+                <p className="text-sm">Waiting for file processing...</p>
               </div>
             </div>
           )}

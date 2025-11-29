@@ -1,14 +1,39 @@
-transformers==4.46.3
-tokenizers==0.20.3
-PyMuPDF
+# DeepSeek-OCR-Web Dependencies
+# For NVIDIA Blackwell (sm_121) ARM64 systems
+
+# Core ML/AI - PyTorch nightly with CUDA 12.8 support
+# Install separately: pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
+# torch>=2.10.0.dev
+# torchvision>=0.25.0.dev
+# torchaudio>=2.10.0.dev
+
+# Hugging Face
+transformers>=4.45.0
+accelerate>=1.12.0
+tokenizers>=0.20.0
+
+# PDF/Image Processing
+PyMuPDF>=1.26.0
 img2pdf
+Pillow>=12.0.0
+
+# Utilities
 einops
 easydict
-addict 
-Pillow
-numpy
+addict
+numpy>=2.0.0
+tqdm>=4.67.0
+matplotlib
+
+# Model Download
+modelscope>=1.32.0
+
+# Web Backend
 fastapi>=0.110.0
 uvicorn>=0.30.0
 python-dotenv>=1.0.1
 aiofiles>=24.1.0
-requests>=2.32.3
+requests>=2.32.0
+
+# Note: vLLM is installed but NOT used on Blackwell GPUs due to compatibility issues
+# The backend uses Hugging Face Transformers with model.infer() instead

@@ -3,12 +3,9 @@ import { FileText, X, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
-import API_CONFIG from '../config/api';
-
-const API_BASE_URL = API_CONFIG.BASE_URL;
 
 interface FileNode {
   name: string;
@@ -32,14 +29,14 @@ export function FilePreview({ file, isExpanded, onToggleExpand }: FilePreviewPro
     return (
       <div className="bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200 shadow-lg overflow-hidden h-full flex flex-col">
         <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b border-gray-200 flex-shrink-0 flex items-center justify-between relative">
-          <h3 className="text-sm text-gray-700">OCR解析结果查看</h3>
+          <h3 className="text-sm text-gray-700">OCR Result Preview</h3>
           {onToggleExpand && (
             <Button
               onClick={onToggleExpand}
               variant="ghost"
               size="sm"
               className="h-8 w-8 p-0 hover:bg-white/50 hover:text-teal-600 transition-all cursor-pointer"
-              title={isExpanded ? '缩小预览' : '放大预览'}
+              title={isExpanded ? 'Minimize preview' : 'Maximize preview'}
             >
               {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
@@ -48,7 +45,7 @@ export function FilePreview({ file, isExpanded, onToggleExpand }: FilePreviewPro
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-gray-400">
             <FileText className="h-16 w-16 mx-auto mb-4 opacity-30" />
-            <p>请选择文件以预览</p>
+            <p>Select a file to preview</p>
           </div>
         </div>
       </div>
@@ -66,7 +63,7 @@ export function FilePreview({ file, isExpanded, onToggleExpand }: FilePreviewPro
               variant="ghost"
               size="sm"
               className="h-8 w-8 p-0 hover:bg-white/50 hover:text-teal-600 transition-all cursor-pointer"
-              title={isExpanded ? '缩小预览' : '放大预览'}
+              title={isExpanded ? 'Minimize preview' : 'Maximize preview'}
             >
               {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
@@ -138,7 +135,7 @@ export function FilePreview({ file, isExpanded, onToggleExpand }: FilePreviewPro
                   alt={file.name}
                   className="max-w-full h-auto rounded-lg shadow-md cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setIsImageExpanded(true)}
-                  title="点击查看大图"
+                  title="Click to view full size"
                 />
               )}
               {file.fileType === 'pdf' && file.content && (
@@ -149,7 +146,7 @@ export function FilePreview({ file, isExpanded, onToggleExpand }: FilePreviewPro
                     title={file.name}
                   />
                   <p className="text-xs text-gray-500 text-center mt-2">
-                    💡 提示：可以在 PDF 查看器中滚动、缩放和导航
+                    Tip: You can scroll, zoom, and navigate within the PDF viewer
                   </p>
                 </div>
               )}
@@ -162,15 +159,15 @@ export function FilePreview({ file, isExpanded, onToggleExpand }: FilePreviewPro
       {file.fileType === 'image' && file.content && (
         <Dialog open={isImageExpanded} onOpenChange={setIsImageExpanded}>
           <DialogContent className="!max-w-none !w-screen !h-screen !p-0 !bg-transparent !border-0 !shadow-none !fixed !inset-0 !top-0 !left-0 !right-0 !bottom-0 !translate-x-0 !translate-y-0 [&>button]:hidden">
-            <DialogTitle className="sr-only">图片预览</DialogTitle>
+            <DialogTitle className="sr-only">Image Preview</DialogTitle>
             <DialogDescription className="sr-only">
-              全屏查看 {file.name}
+              Full screen view of {file.name}
             </DialogDescription>
             <div className="relative w-full h-full flex items-center justify-center p-4 bg-black/90">
               <button
                 onClick={() => setIsImageExpanded(false)}
                 className="absolute top-6 right-6 z-50 bg-white/20 hover:bg-white/30 text-white rounded-full p-2 transition-all cursor-pointer backdrop-blur-sm"
-                title="关闭"
+                title="Close"
               >
                 <X className="h-6 w-6" />
               </button>
