@@ -10,7 +10,14 @@ import torch.nn.functional as F
 
 from typing import Optional, Tuple, Type
 from functools import partial
-from flash_attn import flash_attn_qkvpacked_func
+
+# Make flash_attn optional - use SDPA fallback if not available
+try:
+    from flash_attn import flash_attn_qkvpacked_func
+    FLASH_ATTN_AVAILABLE = True
+except ImportError:
+    FLASH_ATTN_AVAILABLE = False
+    flash_attn_qkvpacked_func = None
 # from .common import LayerNorm2d, MLPBlock
 
 # from mmgpt.model.vision_encoder.flash_4 import _attention_rel_h_rel_w

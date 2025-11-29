@@ -59,10 +59,10 @@ This tool can efficiently process PDF documents and images, providing powerful O
 
 ### Quick Start
 #### Method 1: One-click Script Startup (Recommended)
-Execute the following script for one-click startup
+This method automatically handles environment setup for various architectures (x86_64, AArch64/ARM64).
 
 ```bash
-# Install model weights and environment dependencies
+# Install Conda (if missing), create environment, and install dependencies
 bash install.sh
 # Start services
 bash start.sh
@@ -86,30 +86,22 @@ Download the official project package
 git clone https://github.com/deepseek-ai/DeepSeek-OCR.git
 ```
 
-Create a virtual environment to install model runtime dependencies
+Create a Conda environment with Python 3.12 and Node.js 22 (Isolated):
 
 ```bash
-conda create -n deepseek-ocr python=3.12.9 -y
+conda create -n deepseek-ocr -c conda-forge python=3.12 nodejs=22 -y
 conda activate deepseek-ocr
 ```
 
-Install Jupyter and corresponding kernel
+Install PyTorch related components (Pip will resolve the correct version for your CUDA/CPU):
 
 ```bash
-conda install jupyterlab
-conda install ipykernel
-python -m ipykernel install --user --name dsocr --display-name "Python (dsocr)"
+pip install torch torchvision torchaudio
 ```
 
-Install PyTorch related components
-
-```bash
-pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu118
-```
-
-Install DeepSeek-OCR officially recommended vLLM version ([v0.8.5+cu118-cp38-abi3-manylinux1_x86_64.whl](https://github.com/vllm-project/vllm/releases/download/v0.8.5/vllm-0.8.5+cu118-cp38-abi3-manylinux1_x86_64.whl))
+Install vLLM (For ARM64 users, this may require building from source if wheels are unavailable):
 ```Bash
-pip install ./packages/vllm-0.8.5+cu118-cp38-abi3-manylinux1_x86_64.whl
+pip install vllm
 ```
 
 Install project basic dependencies
@@ -123,15 +115,15 @@ If dependency conflicts appear during installation as shown in the image, you ca
 
 <img src="assets\3b6eecd322d1ac8aa411e53fd8eefc2f.png"/>
 
-Install flash-attn acceleration library.
+Install flash-attn acceleration library (Optional).
 
 ```Bash
-pip install flash-attn==2.7.3 --no-build-isolation
+pip install flash-attn --no-build-isolation
 ```
 
 Create a `.env` file in the project root directory and enter the model runtime address, for example:
 ```
-MODEL_PATH=/root/autodl-tmp/deepseek-ocr
+MODEL_PATH=/path/to/deepseek-ocr
 ```
 
 ##### Step 3: Start Backend Service
@@ -142,8 +134,9 @@ uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 ```
 
 ##### Step 4: Start Frontend Service
-Install frontend dependencies
+Install frontend dependencies (using isolated npm)
 ```bash
+cd frontend
 npm install
 ```
 

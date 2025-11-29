@@ -6,7 +6,15 @@ from easydict import EasyDict as adict
 import torch
 from torch.nn import functional as F
 from torch import nn
-from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
+
+# Make flash_attn optional - use SDPA fallback if not available
+try:
+    from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
+    FLASH_ATTN_AVAILABLE = True
+except ImportError:
+    FLASH_ATTN_AVAILABLE = False
+    flash_attn_qkvpacked_func = None
+    flash_attn_func = None
 # from optimus import flash_attn_func
 # from megatron.core import tensor_parallel
 # from megatron.core import parallel_state as mpu

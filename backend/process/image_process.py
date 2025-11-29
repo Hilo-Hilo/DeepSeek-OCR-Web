@@ -4,8 +4,20 @@ from typing import List, Tuple
 import torch
 import torchvision.transforms as T
 from PIL import Image, ImageOps
-from transformers import AutoProcessor, BatchFeature, LlamaTokenizerFast
-from transformers.processing_utils import ProcessorMixin
+
+# Skip problematic imports that crash on some ARM64 systems
+# We don't actually need ProcessorMixin functionality for inference
+AutoProcessor = None
+BatchFeature = dict
+LlamaTokenizerFast = None
+
+class ProcessorMixin:
+    """Minimal standalone ProcessorMixin replacement."""
+    tokenizer_class = ("LlamaTokenizer", "LlamaTokenizerFast")
+    attributes = ["tokenizer"]
+    def __init__(self, tokenizer, **kwargs):
+        pass
+
 from config import IMAGE_SIZE, BASE_SIZE, CROP_MODE, MIN_CROPS, MAX_CROPS, PROMPT, TOKENIZER
 
 def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
@@ -499,4 +511,6 @@ class DeepseekOCRProcessor(ProcessorMixin):
         return [[input_ids, pixel_values, images_crop, images_seq_mask, images_spatial_crop, num_image_tokens, image_shapes]]
 
 
-AutoProcessor.register("DeepseekVLV2Processor", DeepseekOCRProcessor)
+# Register processor if AutoProcessor is available
+if AutoProcessor is not None:
+    AutoProcessor.register("DeepseekVLV2Processor", DeepseekOCRProcessor)

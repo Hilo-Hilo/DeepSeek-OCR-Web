@@ -20,8 +20,14 @@ from file_manager import detect_file_type, create_result_dir, list_result_files
 
 # 核心脚本路径
 PROJECT_ROOT = Path(__file__).resolve().parent
-PDF_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_pdf.py"
-IMAGE_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_image.py"
+# Use Hugging Face backend scripts (compatible with PyTorch nightly / Blackwell GPUs)
+PDF_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_pdf_hf.py"
+IMAGE_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_image_hf.py"
+# Fallback to vLLM scripts if HF scripts don't exist
+if not PDF_SCRIPT.exists():
+    PDF_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_pdf.py"
+if not IMAGE_SCRIPT.exists():
+    IMAGE_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_image.py"
 CONFIG_PATH = PROJECT_ROOT / "config.py"
 
 
