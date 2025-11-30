@@ -1,0 +1,48 @@
+# Development Docker Compose with live code reloading
+# Usage: docker compose -f docker-compose.dev.yml up
+
+version: '3.8'
+
+services:
+  deepseek-ocr-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    image: deepseek-ocr-web:dev
+    container_name: deepseek-ocr-dev
+    ports:
+      - "8002:8002"
+      - "3000:3000"
+    volumes:
+      # Model weights (required)
+      - ./deepseek-ocr:/app/deepseek-ocr:ro
+      
+      # Persistent data
+      - ./workspace:/app/workspace
+      
+      # Live code reloading - mount source directories
+      - ./backend:/app/backend
+      - ./frontend/src:/app/frontend/src
+      - ./frontend/public:/app/frontend/public
+    environment:
+      - MODEL_PATH=/app/deepseek-ocr
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTORCH_JIT=0
+      # Enable hot reload for uvicorn
+      - UVICORN_RELOAD=true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Override entrypoint for development (with --reload flag)
+    command: >
+      bash -c "
+        cd /app/backend && 
+        nohup uvicorn main:app --host 0.0.0.0 --port 8002 --reload &
+        cd /app/frontend && 
+        npm run dev -- --host 0.0.0.0
+      "

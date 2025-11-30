@@ -1,0 +1,64 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment
+.env
+.venv
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+backend.log
+frontend.log
+setup.log
+
+# Model weights (mount as volume instead - saves ~4GB in build context)
+deepseek-ocr/
+
+# Workspace (uploads/results - mount as volume instead)
+workspace/
+
+# Build artifacts
+frontend/build/
+frontend/dist/
+
+# Packages (if included)
+packages/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (optional)
+*.md
+!README.md
+

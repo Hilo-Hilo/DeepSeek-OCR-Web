@@ -1,0 +1,51 @@
+# Docker Compose for DeepSeek-OCR-Web
+# Usage: docker compose up -d
+#
+# Prerequisites:
+#   - NVIDIA Container Toolkit installed
+#   - Model weights in ./deepseek-ocr directory
+#
+# Access:
+#   - Frontend: http://localhost:3001 (or via Tailscale VPN)
+#   - Backend:  http://localhost:8002
+#
+# Auto-start on boot: Use systemd service (see DOCKER.md)
+
+services:
+  deepseek-ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host  # Use host network during build (bypasses DNS issues)
+    image: deepseek-ocr-web:latest
+    container_name: deepseek-ocr-web
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - MODEL_PATH=/app/deepseek-ocr
+      - PYTORCH_JIT=0
+    volumes:
+      # Mount model directory (required)
+      - ./deepseek-ocr:/app/deepseek-ocr:ro
+      # Mount workspace for uploads and results (persistent storage)
+      - ./workspace:/app/workspace
+    ports:
+      - "8002:8002"  # Backend API
+      - "3001:3000"  # Frontend (external 3001 -> internal 3000)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/history"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    stdin_open: true
+    tty: true

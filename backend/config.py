@@ -10,8 +10,8 @@ PRINT_NUM_VIS_TOKENS = False
 SKIP_REPEAT = True
 
 MODEL_PATH = r'/home/hansonwen/DeepSeek-OCR-Web/deepseek-ocr'
-INPUT_PATH = r'/home/hansonwen/DeepSeek-OCR-Web/workspace/uploads/user_upload_20251128_215536_801d622d.pdf'
-OUTPUT_PATH = r'/home/hansonwen/DeepSeek-OCR-Web/workspace/results/ocr_task_7ce26ba1_20251128_215538_7ed1d3aa'
+INPUT_PATH = r'/home/hansonwen/DeepSeek-OCR-Web/workspace/uploads/user_upload_20251129_145417_2e1f8489.pdf'
+OUTPUT_PATH = r'/home/hansonwen/DeepSeek-OCR-Web/workspace/results/ocr_task_9533fd7d_20251129_145420_09ac5b3f'
 PROMPT = """<image>
 <|grounding|>Convert the document to markdown."""
 
