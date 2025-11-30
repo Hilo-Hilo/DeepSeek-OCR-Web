@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FileUploader } from './components/FileUploader';
 import { PromptInput } from './components/PromptInput';
 import { FileExplorer } from './components/FileExplorer';
 import { FilePreview } from './components/FilePreview';
 import { HistoryPanel } from './components/HistoryPanel';
 import { ConsoleOutput } from './components/ConsoleOutput';
+import { JobQueuePanel } from './components/JobQueuePanel';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import API_CONFIG from './config/api';
 
 interface FileNode {
@@ -34,6 +34,103 @@ export default function App() {
   const [consoleMessages, setConsoleMessages] = useState<string[]>([]);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [totalRuntime, setTotalRuntime] = useState<number | null>(null);
+  
+  // Track if we've restored state from a running job
+  const hasRestoredState = useRef(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check for running jobs on mount and restore state
+  useEffect(() => {
+    const checkRunningJobs = async () => {
+      if (hasRestoredState.current) return;
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/history`);
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.jobs) {
+          const runningJob = data.jobs.find((job: any) => job.status === 'running');
+          
+          if (runningJob) {
+            hasRestoredState.current = true;
+            
+            // Restore state from running job
+            setTaskId(runningJob.task_id);
+            setIsProcessing(true);
+            setOriginalFilename(runningJob.original_filename || runningJob.filename || '');
+            
+            // Calculate elapsed time from job start
+            if (runningJob.timestamp) {
+              const startTime = new Date(runningJob.timestamp).getTime();
+              setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+            }
+            
+            toast.info('Resuming running job', {
+              description: `Task ${runningJob.task_id} is still processing`,
+            });
+            
+            // Start polling for completion
+            startPolling(runningJob.task_id, Date.now());
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check running jobs:', error);
+      }
+    };
+    
+    checkRunningJobs();
+    
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
+  }, []);
+
+  const startPolling = (taskIdToTrack: string, startTime: number) => {
+    // Start elapsed time counter
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    
+    // Poll for completion
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const progressRes = await fetch(`${API_BASE_URL}/api/progress/${taskIdToTrack}`);
+        const progressData = await progressRes.json();
+        
+        if (progressData.status === 'success' && 
+            (progressData.state === 'finished' || progressData.state === 'error' || progressData.state === 'cancelled')) {
+          
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          setIsProcessing(false);
+          
+          if (progressData.state === 'finished') {
+            // Fetch result
+            const resultRes = await fetch(`${API_BASE_URL}/api/result/${taskIdToTrack}`);
+            const resultData = await resultRes.json();
+            
+            if (resultData.status === 'success' && resultData.state === 'finished') {
+              setResultDir(resultData.result_dir);
+              setParseCompleted(true);
+              const runtime = resultData.runtime || Math.floor((Date.now() - startTime) / 1000);
+              setTotalRuntime(runtime);
+              toast.success('Processing complete!', {
+                description: `Finished in ${formatTime(runtime)}`,
+              });
+            }
+          } else if (progressData.state === 'cancelled') {
+            toast.info('Task was cancelled');
+          } else if (progressData.state === 'error') {
+            toast.error('Processing failed');
+          }
+        }
+      } catch (error) {
+        console.error('Progress poll error:', error);
+      }
+    }, 2000);
+  };
 
   const handleFileChange = async (file: File | null) => {
     setUploadedFile(file);
@@ -68,7 +165,9 @@ export default function App() {
             description: `Uploaded ${file.name}`,
           });
         } else {
-          toast.error('File upload failed');
+          toast.error('File upload failed', {
+            description: data.message || 'Unknown error',
+          });
         }
       } catch (error) {
         console.error('Upload error:', error);
@@ -92,11 +191,7 @@ export default function App() {
     setElapsedTime(0);
     setTotalRuntime(null);
 
-    // Start elapsed time counter
     const startTime = Date.now();
-    const timerInterval = setInterval(() => {
-      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/start`, {
@@ -130,43 +225,16 @@ export default function App() {
           console.log('Console WebSocket connection failed (optional feature)');
         };
         
-        // Poll for completion from backend
-        const pollInterval = setInterval(async () => {
-          try {
-            const progressRes = await fetch(`${API_BASE_URL}/api/progress/${data.task_id}`);
-            const progressData = await progressRes.json();
-            
-            if (progressData.status === 'success' && progressData.state === 'finished') {
-              clearInterval(pollInterval);
-              clearInterval(timerInterval);
-              ws.close();
-              setIsProcessing(false);
-              
-              // Fetch result
-              const resultRes = await fetch(`${API_BASE_URL}/api/result/${data.task_id}`);
-              const resultData = await resultRes.json();
-              
-              if (resultData.status === 'success' && resultData.state === 'finished') {
-                setResultDir(resultData.result_dir);
-                setParseCompleted(true);
-                const runtime = resultData.runtime || Math.floor((Date.now() - startTime) / 1000);
-                setTotalRuntime(runtime);
-                toast.success('Processing complete!', {
-                  description: `Finished in ${formatTime(runtime)}`,
-                });
-              }
-            }
-          } catch (error) {
-            console.error('Progress poll error:', error);
-          }
-        }, 2000); // Poll every 2 seconds
+        // Start polling
+        startPolling(data.task_id, startTime);
+        
       } else {
-        clearInterval(timerInterval);
-        toast.error('Failed to start processing task');
+        toast.error('Failed to start processing task', {
+          description: data.message || 'Unknown error',
+        });
         setIsProcessing(false);
       }
     } catch (error) {
-      clearInterval(timerInterval);
       console.error('Parse error:', error);
       toast.error('Processing failed', {
         description: 'Unable to connect to backend service',
@@ -219,8 +287,10 @@ export default function App() {
             </button>
           </div>
           
-          {/* Spacer to balance the header */}
-          <div className="w-[140px]"></div>
+          {/* Job Queue Panel in Header */}
+          <div className="w-[140px] flex justify-end">
+            <JobQueuePanel />
+          </div>
         </div>
       </header>
 
@@ -230,7 +300,10 @@ export default function App() {
           <div className="grid grid-cols-2 gap-6 h-[calc(100vh-100px)]">
             {/* Left Panel - File Upload */}
             <div className="flex flex-col min-h-0">
-              <FileUploader onFileChange={handleFileChange} />
+              <FileUploader 
+                onFileChange={handleFileChange}
+                initialFile={uploadedFile}
+              />
             </div>
 
             {/* Right Panel - Results */}
@@ -247,7 +320,7 @@ export default function App() {
                     onPromptChange={setPrompt}
                     onParse={handleStartParsing}
                     isProcessing={isProcessing}
-                    hasFile={!!uploadedFile}
+                    hasFile={!!uploadedFile || !!uploadedFilePath}
                     isCompact={isPreviewExpanded}
                     elapsedTime={isProcessing ? elapsedTime : undefined}
                     totalRuntime={totalRuntime}

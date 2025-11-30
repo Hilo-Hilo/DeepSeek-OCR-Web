@@ -1,19 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Upload, Trash2 } from 'lucide-react';
 
 interface FileUploaderProps {
   onFileChange: (file: File | null) => void;
+  initialFile?: File | null;
 }
 
-export function FileUploader({ onFileChange }: FileUploaderProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+export function FileUploader({ onFileChange, initialFile }: FileUploaderProps) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(initialFile || null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
+
+  // Sync with parent's initialFile prop (for tab switching)
+  useEffect(() => {
+    if (initialFile && initialFile !== selectedFile) {
+      setSelectedFile(initialFile);
+      const url = URL.createObjectURL(initialFile);
+      setPreviewUrl(url);
+    } else if (!initialFile && selectedFile) {
+      // Parent cleared the file
+      setSelectedFile(null);
+      setPreviewUrl('');
+    }
+  }, [initialFile]);
+
+  // Clean up preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Clean up old preview URL
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      
       setSelectedFile(file);
       onFileChange(file);
       
@@ -24,6 +52,11 @@ export function FileUploader({ onFileChange }: FileUploaderProps) {
   };
 
   const handleDelete = () => {
+    // Clean up preview URL
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    
     setSelectedFile(null);
     setPreviewUrl('');
     onFileChange(null);

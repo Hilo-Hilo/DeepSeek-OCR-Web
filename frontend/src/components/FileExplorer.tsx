@@ -241,37 +241,49 @@ export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resul
     );
   };
 
-  const handleDownloadZip = async (format: 'mmd' | 'md' | 'txt') => {
+  const handleDownloadZip = (format: 'mmd' | 'md' | 'txt') => {
     if (!taskId) {
       toast.error('No task ID available');
       return;
     }
 
-    try {
-      toast.info('Preparing download...', { duration: 2000 });
-      const response = await fetch(`${API_BASE_URL}/api/download/zip/${taskId}?format=${format}`);
-      
-      if (!response.ok) {
-        throw new Error('Download failed');
-      }
-      
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ocr_results_${taskId}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      toast.success('Download complete', {
-        description: `Downloaded as .${format} format`,
+    console.log('handleDownloadZip called:', taskId, format);
+    const downloadUrl = `${API_BASE_URL}/api/download/zip/${taskId}?format=${format}`;
+    console.log('Download URL:', downloadUrl);
+    
+    // Use fetch + blob approach for cross-origin downloads
+    toast.info('Starting download...', {
+      description: `Preparing ${format} file`,
+    });
+    
+    fetch(downloadUrl)
+      .then(response => {
+        console.log('Fetch response:', response.status, response.headers.get('content-type'));
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        console.log('Blob received:', blob.size, blob.type);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ocr_results_${taskId}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success('Download complete', {
+          description: `Saved as ocr_results_${taskId}.zip`,
+        });
+      })
+      .catch(error => {
+        console.error('Download error:', error);
+        toast.error('Download failed', {
+          description: error.message,
+        });
       });
-    } catch (error) {
-      console.error('Download error:', error);
-      toast.error('Download failed');
-    }
   };
 
   return (
@@ -281,26 +293,33 @@ export function FileExplorer({ onFileSelect, selectedFile, parseCompleted, resul
         {parseCompleted && fileStructure.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 hover:bg-teal-50 hover:text-teal-600 transition-all cursor-pointer"
+              <button
+                className="inline-flex items-center h-7 px-2 text-sm rounded-md hover:bg-teal-50 hover:text-teal-600 transition-all cursor-pointer"
                 title="Download all files"
               >
                 <Download className="h-4 w-4 mr-1" />
                 <ChevronDownIcon className="h-3 w-3" />
-              </Button>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleDownloadZip('mmd')} className="cursor-pointer">
+              <button
+                onClick={() => handleDownloadZip('mmd')}
+                className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100 rounded cursor-pointer"
+              >
                 Download as .mmd (MultiMarkdown)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleDownloadZip('md')} className="cursor-pointer">
+              </button>
+              <button
+                onClick={() => handleDownloadZip('md')}
+                className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100 rounded cursor-pointer"
+              >
                 Download as .md (Markdown)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleDownloadZip('txt')} className="cursor-pointer">
+              </button>
+              <button
+                onClick={() => handleDownloadZip('txt')}
+                className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100 rounded cursor-pointer"
+              >
                 Download as .txt (Plain Text)
-              </DropdownMenuItem>
+              </button>
             </DropdownMenuContent>
           </DropdownMenu>
         )}

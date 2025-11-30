@@ -19,8 +19,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Query
 
 from file_manager import save_uploaded_file
-from inference_runner import run_ocr_task, read_task_state, LOGS_DIR
+from inference_runner import run_ocr_task, read_task_state, cancel_ocr_task, LOGS_DIR
 from config_loader import UPLOAD_DIR, RESULTS_DIR
+
+# Track running task processes for cancellation
+running_tasks: dict = {}
 
 
 app = FastAPI(title="DeepSeek OCR Backend", version="1.0.0")
@@ -30,6 +33,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # Allow browser to see this header for downloads
 )
 
 active_connections = {}
@@ -125,7 +129,10 @@ async def start_ocr_task_endpoint(payload: dict, background_tasks: BackgroundTas
             if task_id in console_connections:
                 asyncio.create_task(send_console_log(task_id, msg))
 
-        result = run_ocr_task(
+        # Use asyncio.to_thread to run blocking OCR task without blocking event loop
+        # This allows other API calls (like /api/history) to respond during processing
+        result = await asyncio.to_thread(
+            run_ocr_task,
             input_path=file_path, 
             task_id=task_id, 
             on_progress=on_progress, 
@@ -134,6 +141,10 @@ async def start_ocr_task_endpoint(payload: dict, background_tasks: BackgroundTas
             original_filename=original_filename,
             on_console_log=on_console_log
         )
+        
+        # Clean up running task reference
+        if task_id in running_tasks:
+            del running_tasks[task_id]
 
         if task_id in active_connections:
             ws = active_connections[task_id]
@@ -274,6 +285,59 @@ async def get_job_history():
             continue
     
     return {"status": "success", "jobs": jobs}
+
+
+@app.post("/api/cancel/{task_id}")
+async def cancel_task(task_id: str):
+    """Cancel a running OCR task"""
+    state = read_task_state(task_id)
+    if not state:
+        return {"status": "error", "message": "Task does not exist"}
+    
+    if state.get("status") != "running":
+        return {"status": "error", "message": f"Task is not running (status: {state.get('status')})"}
+    
+    # Try to cancel the task
+    success = cancel_ocr_task(task_id)
+    
+    if success:
+        return {"status": "success", "message": f"Task {task_id} cancelled"}
+    else:
+        return {"status": "error", "message": "Failed to cancel task"}
+
+
+@app.delete("/api/delete/{task_id}")
+async def delete_task(task_id: str):
+    """Delete a task and its result files"""
+    import shutil
+    
+    state = read_task_state(task_id)
+    if not state:
+        return {"status": "error", "message": "Task does not exist"}
+    
+    # Don't allow deleting running tasks
+    if state.get("status") == "running":
+        return {"status": "error", "message": "Cannot delete a running task. Cancel it first."}
+    
+    try:
+        # Delete result directory if it exists
+        result_dir = state.get("result_dir")
+        if result_dir:
+            result_path = Path(result_dir)
+            if result_path.exists():
+                shutil.rmtree(result_path)
+                print(f"🗑️ Deleted result directory: {result_path}")
+        
+        # Delete task state file
+        state_file = LOGS_DIR / f"task_{task_id}.json"
+        if state_file.exists():
+            state_file.unlink()
+            print(f"🗑️ Deleted task state file: {state_file}")
+        
+        return {"status": "success", "message": f"Task {task_id} deleted"}
+    except Exception as e:
+        print(f"❌ Error deleting task {task_id}: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/api/download/zip/{task_id}")

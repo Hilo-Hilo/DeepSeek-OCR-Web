@@ -9,9 +9,12 @@ Supports:
 - Task state JSON persistence
 - Runtime tracking
 - Console output streaming
+- Task cancellation
 """
 
 import json
+import os
+import signal
 import subprocess
 import threading
 import time
@@ -21,6 +24,9 @@ from datetime import datetime
 
 from config_loader import MODEL_PATH, LOGS_DIR
 from file_manager import detect_file_type, create_result_dir, list_result_files
+
+# Track running processes for cancellation
+_running_processes: Dict[str, subprocess.Popen] = {}
 
 # Core script paths
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -53,6 +59,53 @@ def read_task_state(task_id: str) -> Optional[Dict[str, Any]]:
             return json.load(f)
     except Exception:
         return None
+
+
+def cancel_ocr_task(task_id: str) -> bool:
+    """Cancel a running OCR task by killing its subprocess"""
+    # Check if process is tracked
+    if task_id in _running_processes:
+        process = _running_processes[task_id]
+        try:
+            # Kill the process and its children
+            if process.poll() is None:  # Process is still running
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()  # Force kill if terminate doesn't work
+                
+            del _running_processes[task_id]
+            
+            # Update task state
+            state = read_task_state(task_id)
+            if state:
+                state["status"] = "cancelled"
+                state["message"] = "Task was cancelled by user"
+                write_task_state(task_id, state)
+            
+            print(f"🛑 Task {task_id} cancelled")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to cancel task {task_id}: {e}")
+            return False
+    
+    # Try to read PID from state file as fallback
+    state = read_task_state(task_id)
+    if state and "pid" in state:
+        try:
+            pid = state["pid"]
+            os.kill(pid, signal.SIGTERM)
+            state["status"] = "cancelled"
+            state["message"] = "Task was cancelled by user"
+            write_task_state(task_id, state)
+            print(f"🛑 Task {task_id} cancelled via PID {pid}")
+            return True
+        except (ProcessLookupError, PermissionError) as e:
+            print(f"❌ Failed to kill process {state.get('pid')}: {e}")
+            return False
+    
+    return False
 
 
 # ====== Temporary config.py Override ======
@@ -125,6 +178,20 @@ def run_ocr_task(
             universal_newlines=True,
             bufsize=1,
         )
+        
+        # Track the process for cancellation
+        _running_processes[task_id] = process
+        
+        # Store PID in task state for recovery
+        write_task_state(task_id, {
+            "status": "running", 
+            "result_dir": str(result_dir),
+            "filename": filename,
+            "original_filename": original_filename,
+            "timestamp": timestamp,
+            "start_time": start_time,
+            "pid": process.pid
+        })
 
         progress = 0
         console_buffer = []
@@ -177,9 +244,19 @@ def run_ocr_task(
         thread.start()
         process.wait()
         thread.join()
+        
+        # Clean up process tracking
+        if task_id in _running_processes:
+            del _running_processes[task_id]
 
         # Calculate total runtime
         runtime = int(time.time() - start_time)
+        
+        # Check if task was cancelled
+        current_state = read_task_state(task_id)
+        if current_state and current_state.get("status") == "cancelled":
+            print(f"🛑 Task {task_id} was cancelled")
+            return {"status": "cancelled", "message": "Task was cancelled by user", "runtime": runtime}
 
         if process.returncode != 0:
             write_task_state(task_id, {
@@ -213,6 +290,10 @@ def run_ocr_task(
         }
 
     except Exception as e:
+        # Clean up process tracking
+        if task_id in _running_processes:
+            del _running_processes[task_id]
+            
         runtime = int(time.time() - start_time)
         write_task_state(task_id, {
             "status": "error", 
