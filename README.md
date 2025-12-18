@@ -1,12 +1,11 @@
 <div align="center">
   <h1>DeepSeek-OCR Studio</h1>
-  <span><a href="./README_zh.md">中文</a> | English</span>
 </div>
 
 ## ⚡ Project Overview
 
-This project is a multimodal document parsing tool based on DeepSeek-OCR with React frontend and FastAPI backend.
-![项目图片](assets/项目图片.png)
+This project is a multimodal document parsing tool based on DeepSeek-OCR with Next.js frontend and FastAPI backend.
+![DeepSeek OCR Demo](./demo.png)
 This tool can efficiently process PDF documents and images, providing powerful Optical Character Recognition (OCR) capabilities, supporting multi-language text recognition, table parsing, chart analysis, and many other features.
 
 ### Key Features
@@ -26,7 +25,7 @@ This tool can efficiently process PDF documents and images, providing powerful O
 
 **PDF Document Parsing - Supports complex content including images and tables**
 
-<img src="assets/文档解析.gif" width="600" alt="Document Parsing">
+<img src="assets/document_parsing.gif" width="600" alt="Document Parsing">
 
 </div>
 
@@ -34,7 +33,7 @@ This tool can efficiently process PDF documents and images, providing powerful O
 
 | Multi-language Text Parsing | Chart & Table Parsing |
 |:---:|:---:|
-| <img src="assets/多语种.gif" width="400" alt="Multi-language Text Parsing"> | <img src="assets/表格解析.gif" width="400" alt="Chart & Table Parsing"> |
+| <img src="assets/multilingual.gif" width="400" alt="Multi-language Text Parsing"> | <img src="assets/table_parsing.gif" width="400" alt="Chart & Table Parsing"> |
 
 </div>
 
@@ -42,7 +41,7 @@ This tool can efficiently process PDF documents and images, providing powerful O
 
 | Professional Domain Drawing Recognition<br/>(CAD, Flowcharts, Decorative Drawings) | Data Visualization Chart<br/>Reverse Parsing |
 |:---:|:---:|
-| <img src="assets/CAD图纸语义解析.gif" width="400" alt="CAD Drawing Semantic Recognition"> | <img src="assets/图表逆向表格.gif" width="400" alt="Data Visualization Chart Reverse Parsing"> |
+| <img src="assets/cad_drawing_parsing.gif" width="400" alt="CAD Drawing Semantic Recognition"> | <img src="assets/chart_reverse_parsing.gif" width="400" alt="Data Visualization Chart Reverse Parsing"> |
 
 </div>
 
