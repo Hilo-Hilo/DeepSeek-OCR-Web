@@ -59,7 +59,8 @@ sleep 2
 echo ""
 echo "🖥️  Starting frontend server on port 3000..."
 cd /app/frontend
-npm run dev -- --host 0.0.0.0 &
+# Next.js production server (requires `next build` during image build)
+npm run start -- --hostname 0.0.0.0 --port 3000 &
 FRONTEND_PID=$!
 echo "✅ Frontend started (PID: $FRONTEND_PID)"
 
@@ -67,7 +68,7 @@ echo ""
 echo "============================================"
 echo "🎉 DeepSeek-OCR-Web is running!"
 echo "   Backend:  http://localhost:8002"
-echo "   Frontend: http://localhost:3000"
+echo "   Frontend: http://localhost:3000 (container; typically mapped to http://<host>:3001)"
 echo "============================================"
 echo ""
 

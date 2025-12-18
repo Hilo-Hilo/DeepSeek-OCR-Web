@@ -115,7 +115,7 @@ bash start.sh
 ```
 
 **访问地址：**
-- 前端: http://localhost:3000
+- 前端: http://localhost:3001（或 http://<tailscale-ip>:3001）
 - 后端: http://localhost:8002
 
 ---
@@ -164,7 +164,8 @@ uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 # 终端 2：前端
 cd frontend
 npm install
-npm run dev
+# 使用 3001 便于远程访问（例如 Tailscale）
+npm run dev -- --hostname 0.0.0.0 --port 3001
 ```
 
 ---

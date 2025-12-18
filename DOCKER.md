@@ -83,6 +83,10 @@ docker compose up -d
 # Backend:  http://localhost:8002
 ```
 
+**Note (GB10 / sm_121)**:
+- The Docker build installs **PyTorch nightly `cu128`** to support the GB10 GPU (sm_121). The first build can take a while and download several GB of wheels.
+- `flash-attn` is intentionally **not installed** in Docker to avoid ABI mismatches when upgrading PyTorch.
+
 ### Option 2: Docker CLI
 
 ```bash
@@ -203,7 +207,7 @@ docker compose -f docker-compose.dev.yml up
 | Change | Live Reload? | Mechanism |
 |--------|--------------|-----------|
 | `backend/*.py` | ✅ Instant | uvicorn --reload |
-| `frontend/src/*` | ✅ Instant | Vite HMR |
+| `frontend/src/*` | ✅ Instant | Next.js HMR (Fast Refresh) |
 | `workspace/*` | ✅ Always | Volume mount |
 | `requirements.txt` | ❌ Rebuild | New dependencies |
 | `package.json` | ❌ Rebuild | New dependencies |

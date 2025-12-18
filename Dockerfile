@@ -2,7 +2,7 @@
 # Uses NVIDIA PyTorch container as base (has CUDA-enabled PyTorch pre-installed)
 #
 # Build: docker build --network=host -t deepseek-ocr-web .
-# Run:   docker run --gpus all -p 8002:8002 -p 3000:3000 -v ./deepseek-ocr:/app/deepseek-ocr:ro deepseek-ocr-web
+# Run:   docker run --gpus all -p 8002:8002 -p 3001:3000 -v ./deepseek-ocr:/app/deepseek-ocr:ro deepseek-ocr-web
 
 # NVIDIA PyTorch container with CUDA support (works on ARM64)
 FROM nvcr.io/nvidia/pytorch:24.08-py3
@@ -31,13 +31,22 @@ WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
+# PyTorch upgrade for GB10 / Blackwell (sm_121)
+# The NGC 24.08 PyTorch build does not include sm_121 kernels, which causes
+# DeepSeek-OCR's `.infer()` (which calls `.cuda()`) to fail at runtime.
+# Install nightly cu128 wheels that include newer CUDA libs and sm_121 support.
+RUN pip install --no-cache-dir --upgrade --pre torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/nightly/cu128
+
 # CRITICAL: Fix version compatibility for NVIDIA PyTorch container
 # 1. Downgrade numpy to 1.x (container's PyTorch was built with NumPy 1.x)
 # 2. Pin transformers to 4.45.0 (compatible with DeepSeek-OCR model)
 RUN pip install "numpy<2" "transformers==4.45.0" --force-reinstall
 
-# Install flash-attn (optional)
-RUN pip install flash-attn --no-build-isolation || echo "flash-attn installation failed (non-critical)"
+# flash-attn is optional, but when upgrading PyTorch (e.g. to nightly cu128),
+# any prebuilt flash-attn binaries can become ABI-incompatible and break model
+# imports. Keep it uninstalled in Docker for stability.
+RUN pip uninstall -y flash-attn || true
 
 # Install frontend dependencies
 COPY frontend/package*.json /app/frontend/
@@ -45,6 +54,9 @@ RUN cd /app/frontend && npm install --legacy-peer-deps
 
 # Copy application code
 COPY . /app/
+
+# Build Next.js frontend for production (required for `next start`)
+RUN cd /app/frontend && npm run build
 
 # Create workspace directories
 RUN mkdir -p /app/workspace/uploads /app/workspace/results /app/workspace/logs

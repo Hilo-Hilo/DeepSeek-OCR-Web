@@ -11,15 +11,15 @@ import io
 import os
 import json
 from pathlib import Path
-from datetime import datetime
-from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, BackgroundTasks
+from datetime import datetime, timezone
+from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect, BackgroundTasks, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi import Query
 
 from file_manager import save_uploaded_file
-from inference_runner import run_ocr_task, read_task_state, cancel_ocr_task, LOGS_DIR
+from inference_runner import run_ocr_task, read_task_state, cancel_ocr_task, write_task_state, LOGS_DIR
 from config_loader import UPLOAD_DIR, RESULTS_DIR
 
 # Track running task processes for cancellation
@@ -119,15 +119,37 @@ async def start_ocr_task_endpoint(payload: dict, background_tasks: BackgroundTas
     # Use original filename if provided, otherwise extract from path
     filename = Path(file_path).name
 
+    # Create an initial state file immediately so the frontend can poll/cancel
+    # even before the background worker has spawned the subprocess.
+    write_task_state(task_id, {
+        "status": "running",
+        "progress": 0,
+        "filename": filename,
+        "original_filename": original_filename,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
     async def background_task():
+        loop = asyncio.get_running_loop()
+
         def on_progress(p):
-            if task_id in active_connections:
-                ws = active_connections[task_id]
-                asyncio.create_task(send_progress(ws, task_id, p))
+            ws = active_connections.get(task_id)
+            if not ws:
+                return
+            try:
+                # run_ocr_task executes in a worker thread; schedule WS sends on the main loop
+                asyncio.run_coroutine_threadsafe(send_progress(ws, task_id, p), loop)
+            except Exception:
+                pass
 
         def on_console_log(msg):
-            if task_id in console_connections:
-                asyncio.create_task(send_console_log(task_id, msg))
+            if task_id not in console_connections:
+                return
+            try:
+                # run_ocr_task executes in a worker thread; schedule WS sends on the main loop
+                asyncio.run_coroutine_threadsafe(send_console_log(task_id, msg), loop)
+            except Exception:
+                pass
 
         # Use asyncio.to_thread to run blocking OCR task without blocking event loop
         # This allows other API calls (like /api/history) to respond during processing
@@ -229,6 +251,10 @@ async def get_task_progress(task_id: str):
     progress = state.get("progress", 0)
     status = state.get("status", "unknown")
 
+    # Make finished tasks report 100% so UIs can show a sensible final value.
+    if status == "finished":
+        progress = 100
+
     return {
         "status": "success",
         "task_id": task_id,
@@ -237,18 +263,29 @@ async def get_task_progress(task_id: str):
     }
 
 
-@app.get("/api/file/content")
-async def preview_file(path: str):
-    """File preview"""
+@app.head("/api/file/content")
+async def head_file_content(path: str):
+    """Check whether a file exists (used by frontend upload-recovery)."""
     file_path = Path(path)
     if not file_path.exists():
-        return {"status": "error", "message": "File does not exist"}
+        return Response(status_code=404)
+    return Response(status_code=200)
 
-    if file_path.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+
+@app.get("/api/file/content")
+async def preview_file(path: str):
+    """File preview (text returns JSON; binary returns FileResponse)."""
+    file_path = Path(path)
+    if not file_path.exists():
+        return JSONResponse({"status": "error", "message": "File does not exist"}, status_code=404)
+
+    suffix = file_path.suffix.lower()
+    if suffix in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"]:
         return FileResponse(file_path)
-    else:
-        content = file_path.read_text(encoding="utf-8", errors="ignore")
-        return JSONResponse({"content": content})
+
+    # Default: treat as text content (markdown / mmd / txt / logs, etc.)
+    content = file_path.read_text(encoding="utf-8", errors="ignore")
+    return JSONResponse({"content": content})
 
 
 @app.get("/api/history")
@@ -259,6 +296,13 @@ async def get_job_history():
     if not LOGS_DIR.exists():
         return {"status": "success", "jobs": []}
     
+    def pid_is_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
     # Read all task state files
     for state_file in sorted(LOGS_DIR.glob("task_*.json"), reverse=True):
         try:
@@ -268,17 +312,39 @@ async def get_job_history():
             # Extract task_id from filename
             task_id = state_file.stem.replace("task_", "")
             
-            # Get file modification time as timestamp
-            timestamp = datetime.fromtimestamp(state_file.stat().st_mtime).isoformat()
+            # Get file modification time as timestamp (UTC)
+            timestamp = datetime.fromtimestamp(state_file.stat().st_mtime, tz=timezone.utc).isoformat()
             
+            status = state.get("status", "unknown")
+
+            # Cleanup: if a task is marked running but there is no live PID, treat it as failed.
+            if status == "running":
+                pid = state.get("pid")
+                if isinstance(pid, int):
+                    if not pid_is_alive(pid):
+                        status = "error"
+                        state["status"] = "error"
+                        state["message"] = state.get("message") or "Task was interrupted (process not running)"
+                        write_task_state(task_id, state)
+                else:
+                    # Older state files may not include a PID; if the state file hasn't been updated
+                    # recently, assume it is stale.
+                    age_s = max(0, int(datetime.now(timezone.utc).timestamp() - state_file.stat().st_mtime))
+                    if age_s > 60:
+                        status = "error"
+                        state["status"] = "error"
+                        state["message"] = state.get("message") or "Task was interrupted (stale running state)"
+                        write_task_state(task_id, state)
+
             jobs.append({
                 "task_id": task_id,
                 "filename": state.get("filename", ""),
                 "original_filename": state.get("original_filename", ""),
                 "timestamp": state.get("timestamp", timestamp),
                 "runtime": state.get("runtime"),
-                "status": state.get("status", "unknown"),
+                "status": status,
                 "result_dir": state.get("result_dir", ""),
+                "progress": state.get("progress", 0),
             })
         except Exception as e:
             print(f"Error reading state file {state_file}: {e}")
@@ -303,6 +369,15 @@ async def cancel_task(task_id: str):
     if success:
         return {"status": "success", "message": f"Task {task_id} cancelled"}
     else:
+        # If the task hasn't spawned a subprocess yet (or the process is no longer
+        # tracked), mark it cancelled in state so the UI can recover cleanly.
+        state = read_task_state(task_id) or {}
+        if state.get("status") == "running":
+            state["status"] = "cancelled"
+            state["message"] = "Task cancellation requested"
+            write_task_state(task_id, state)
+            return {"status": "success", "message": f"Task {task_id} cancelled"}
+
         return {"status": "error", "message": "Failed to cancel task"}
 
 

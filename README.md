@@ -115,7 +115,7 @@ bash start.sh
 ```
 
 **Access:**
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3001 (or http://<tailscale-ip>:3001)
 - Backend: http://localhost:8002
 
 ---
@@ -166,7 +166,8 @@ uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 # Terminal 2: Frontend
 cd frontend
 npm install
-npm run dev
+# Use 3001 for easy remote access (e.g. via Tailscale)
+npm run dev -- --hostname 0.0.0.0 --port 3001
 ```
 
 ---

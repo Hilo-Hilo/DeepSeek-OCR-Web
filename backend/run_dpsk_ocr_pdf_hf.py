@@ -10,7 +10,8 @@ import os
 
 # Disable JIT compilation for Blackwell GPU compatibility
 os.environ["PYTORCH_JIT"] = "0"
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+# Respect outer environment (docker-compose / subprocess env). Only set a default.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 import fitz
 import io
@@ -33,12 +34,40 @@ class Colors:
     RESET = '\033[0m'
 
 
+def ensure_cuda_supported() -> None:
+    """DeepSeek-OCR's `model.infer()` uses CUDA tensors internally.
+
+    CPU-only execution is not supported; make failures explicit and actionable.
+    """
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available. DeepSeek-OCR infer() requires a CUDA-capable PyTorch build.")
+
+    # Some platforms (e.g. GB10 sm_121) may not appear in torch.cuda.get_arch_list()
+    # even though CUDA ops work via PTX/JIT. Run a tiny smoke test instead.
+    cap = torch.cuda.get_device_capability(0)
+    arch = f"sm_{cap[0]}{cap[1]}"
+    arch_list = torch.cuda.get_arch_list()
+    if arch not in arch_list:
+        print(
+            f"{Colors.YELLOW}⚠️  GPU arch {arch} not explicitly listed in this PyTorch build "
+            f"({', '.join(arch_list)}). Verifying CUDA works with a quick smoke test...{Colors.RESET}"
+        )
+
+    try:
+        x = torch.zeros((1,), device="cuda")
+        torch.cuda.synchronize()
+        _ = x.item()
+    except Exception as e:
+        raise RuntimeError(f"CUDA smoke test failed: {e}") from e
+
+
 # Initialize model globally using official method
+ensure_cuda_supported()
 print(f'{Colors.BLUE}Loading DeepSeek OCR model (Hugging Face Transformers)...{Colors.RESET}')
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
 model = AutoModel.from_pretrained(MODEL_PATH, trust_remote_code=True, use_safetensors=True)
 model = model.eval().cuda().to(torch.bfloat16)
-print(f'{Colors.GREEN}✅ Model loaded successfully!{Colors.RESET}')
+print(f'{Colors.GREEN}✅ Model loaded successfully on CUDA!{Colors.RESET}')
 
 
 def pdf_to_images_high_quality(pdf_path, dpi=144):

@@ -158,6 +158,14 @@ from transformers import AutoModel, AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
 model = AutoModel.from_pretrained(MODEL_PATH, trust_remote_code=True, use_safetensors=True)
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA is not available. DeepSeek-OCR infer() requires a CUDA-capable PyTorch build.")
+cap = torch.cuda.get_device_capability(0)
+arch = f"sm_{cap[0]}{cap[1]}"
+if arch not in torch.cuda.get_arch_list():
+    print(f"⚠️  {arch} not explicitly listed in this PyTorch build; running a CUDA smoke test...")
+torch.zeros((1,), device="cuda"); torch.cuda.synchronize()
+
 model = model.eval().cuda().to(torch.bfloat16)
 
 result = model.infer(
@@ -171,6 +179,9 @@ result = model.infer(
     save_results=True
 )
 ```
+
+**GPU acceleration tip (GB10 / sm_121)**:
+- The Docker image now upgrades to **PyTorch nightly cu128** during build to ensure `sm_121` is supported. If you are running natively, install a PyTorch build that includes `sm_121` in `torch.cuda.get_arch_list()`.
 
 ---
 
@@ -190,13 +201,21 @@ result = model.infer(
 ### Docker Image Details
 
 - **Base Image**: `nvcr.io/nvidia/pytorch:24.08-py3`
-- **Size**: ~17 GB (includes CUDA, PyTorch, cuDNN)
+- **Size**: Larger than the base image (PyTorch is upgraded to nightly cu128 during build and pulls additional CUDA runtime wheels)
 - **Python**: 3.10 (from base image)
 - **Node.js**: 22 (installed in Dockerfile)
+ - **PyTorch**: Upgraded during build via nightly `cu128` wheels to support **GB10 / sm_121**
 
 ### Version Pins for Docker Compatibility
 
 ```dockerfile
+# Install PyTorch nightly cu128 (GB10 / sm_121 support)
+RUN pip install --no-cache-dir --upgrade --pre torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/nightly/cu128
+
+# Avoid flash-attn ABI mismatches after upgrading PyTorch
+RUN pip uninstall -y flash-attn || true
+
 # In Dockerfile - fixes compatibility issues
 RUN pip install "numpy<2" "transformers==4.45.0" --force-reinstall
 ```

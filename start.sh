@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # DeepSeek-OCR Start Script (Generic/Conda Isolated)
-# Supports: Python Backend (FastAPI) + Vite Frontend
+# Supports: Python Backend (FastAPI) + Next.js Frontend (shadcn/ui)
 # Requirement: Conda environment 'deepseek-ocr'
 ###############################################################################
 
@@ -71,17 +71,19 @@ echo -e "${GREEN}✅ Backend started (PID: $BACK_PID). Log: backend.log${RESET}"
 cd ..
 
 # 3. Start Frontend
-FRONTEND_PORT=3000
+# Default to 3001 so it matches the Docker compose mapping and common remote access
+# (e.g. via Tailscale: http://<tailscale-ip>:3001)
+FRONTEND_PORT=3001
 if lsof -i:$FRONTEND_PORT >/dev/null 2>&1; then
     echo -e "${YELLOW}⚠️  Frontend port $FRONTEND_PORT in use. Killing old process...${RESET}"
     fuser -k ${FRONTEND_PORT}/tcp || true
 fi
 
-echo -e "${YELLOW}>>> Step 3. Starting Frontend (Vite)...${RESET}"
+echo -e "${YELLOW}>>> Step 3. Starting Frontend (Next.js)...${RESET}"
 if [ -d "frontend" ]; then
     cd frontend
     # Use the npm from the activated conda environment
-    nohup npm run dev -- --host > ../frontend.log 2>&1 &
+    nohup npm run dev -- --hostname 0.0.0.0 --port ${FRONTEND_PORT} > ../frontend.log 2>&1 &
     FRONT_PID=$!
     echo -e "${GREEN}✅ Frontend started (PID: $FRONT_PID). Log: frontend.log${RESET}"
     cd ..
