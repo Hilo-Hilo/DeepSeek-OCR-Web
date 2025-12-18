@@ -254,6 +254,10 @@ workspace/
 └── logs/       # Job history and status
 ```
 
+**Result structure notes**:
+- Image uploads typically produce `result.mmd`, `result_with_boxes.jpg`, and an `images/` folder in the task result directory.
+- PDF uploads are processed **page-by-page** and produce a combined `result.mmd` at the task root plus per-page outputs under `pages/page_###/`.
+
 **Data persists across container restarts and rebuilds.**
 
 ---

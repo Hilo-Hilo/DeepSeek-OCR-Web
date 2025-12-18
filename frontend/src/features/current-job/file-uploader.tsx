@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, RefreshCw, Trash2, Upload } from "lucide-react";
@@ -47,6 +47,12 @@ export function FileUploader({
   const [isValidatingRecovery, setIsValidatingRecovery] = useState(false);
   const [recoveryValid, setRecoveryValid] = useState<boolean | null>(null);
 
+  // Avoid re-running validation effects just because the parent passes a new callback reference.
+  const onRecoveredFileValidatedRef = useRef(onRecoveredFileValidated);
+  useEffect(() => {
+    onRecoveredFileValidatedRef.current = onRecoveredFileValidated;
+  }, [onRecoveredFileValidated]);
+
   // Sync with parent-provided initial file (task switching)
   useEffect(() => {
     if (initialFile && initialFile !== selectedFile) {
@@ -90,7 +96,7 @@ export function FileUploader({
         const ok = await headFile(recoveredFilePath);
         if (cancelled) return;
         setRecoveryValid(ok);
-        onRecoveredFileValidated?.(ok);
+        onRecoveredFileValidatedRef.current?.(ok);
         if (ok && autoUseRecovered) {
           setUsingRecovered(true);
           setPreviewUrl(recoveredPreviewUrl);
@@ -99,7 +105,7 @@ export function FileUploader({
       } catch {
         if (cancelled) return;
         setRecoveryValid(false);
-        onRecoveredFileValidated?.(false);
+        onRecoveredFileValidatedRef.current?.(false);
       } finally {
         if (!cancelled) setIsValidatingRecovery(false);
       }
@@ -110,7 +116,6 @@ export function FileUploader({
     };
   }, [
     autoUseRecovered,
-    onRecoveredFileValidated,
     recoveredFileName,
     recoveredFilePath,
     recoveredPreviewUrl,
