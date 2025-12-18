@@ -327,9 +327,13 @@ lsof -i :8002
 
 ### CUDA Compatibility Warnings
 
-Warnings about CUDA capabilities (e.g., sm_121 for Blackwell GPUs) are expected. The inference code handles these via:
+Warnings about CUDA capabilities (e.g., `sm_121` for Blackwell GPUs) can appear depending on the exact PyTorch build in the container.
+
+The Hugging Face inference scripts will **try GPU first** when CUDA is available. They will automatically **fall back to CPU only if CUDA fails at runtime**. This prevents hard failures, but OCR will run significantly slower when CPU fallback is used.
+
+Mitigations used by this repo:
 - `PYTORCH_JIT=0` environment variable
-- `torch._dynamo.config.suppress_errors = True` in inference scripts
+- Automatic CPU fallback when the GPU arch is not supported
 
 ### Build Failures
 
