@@ -30,7 +30,7 @@ def detect_file_type(file_path: str) -> str:
     elif ext in [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"]:
         return "image"
     else:
-        raise ValueError(f"❌ Unsupported file type: {ext}")
+        raise ValueError(f"Unsupported file type: {ext}")
 
 
 # ========== Step 2. Save Uploaded File ==========
@@ -59,7 +59,7 @@ def save_uploaded_file(file, filename: str = None) -> Tuple[str, str, str]:
     
     file_type = detect_file_type(str(file_path))
     
-    print(f"📤 File saved: {file_path} ({file_type}) - Original: {original_filename}")
+    print(f"File saved: {file_path} ({file_type}) - Original: {original_filename}")
     
     return str(file_path), file_type, original_filename
 
@@ -76,7 +76,7 @@ def create_result_dir(prefix: str = "task") -> str:
     result_dir = Path(RESULTS_DIR) / dir_name
     os.makedirs(result_dir, exist_ok=True)
     
-    print(f"📁 Result directory created: {result_dir}")
+    print(f"Result directory created: {result_dir}")
     return str(result_dir)
 
 
@@ -90,7 +90,7 @@ def cleanup_uploads(max_keep: int = 10):
         try:
             os.remove(old_file)
         except Exception as e:
-            print(f"⚠️ Failed to delete old file: {old_file}, {e}")
+            print(f"Failed to delete old file: {old_file}, {e}")
 
 
 # ========== Step 5. File List Utility ==========

@@ -2,6 +2,8 @@
 
 Complete guide for running DeepSeek-OCR-Web in Docker with GPU support.
 
+**Optimized for Nvidia DGX Spark**: This setup is tailored for the Nvidia DGX Spark environment using PyTorch Nightly for Blackwell GPU support.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
@@ -68,6 +70,8 @@ docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu22.04 nvidia-smi
 
 ### Option 1: Docker Compose (Recommended)
 
+This is the standard way to run on Nvidia DGX Spark.
+
 ```bash
 # 1. Download model weights (if not present)
 pip install modelscope
@@ -83,8 +87,8 @@ docker compose up -d
 # Backend:  http://localhost:8002
 ```
 
-**Note (GB10 / sm_121)**:
-- The Docker build installs **PyTorch nightly `cu128`** to support the GB10 GPU (sm_121). The first build can take a while and download several GB of wheels.
+**Note (Nvidia DGX Spark / Blackwell)**:
+- The Docker build installs **PyTorch nightly `cu128`** to support the Blackwell GPU architecture (sm_121). The first build can take a while and download several GB of wheels.
 - `flash-attn` is intentionally **not installed** in Docker to avoid ABI mismatches when upgrading PyTorch.
 
 ### Option 2: Docker CLI
@@ -206,11 +210,11 @@ docker compose -f docker-compose.dev.yml up
 
 | Change | Live Reload? | Mechanism |
 |--------|--------------|-----------|
-| `backend/*.py` | ✅ Instant | uvicorn --reload |
-| `frontend/src/*` | ✅ Instant | Next.js HMR (Fast Refresh) |
-| `workspace/*` | ✅ Always | Volume mount |
-| `requirements.txt` | ❌ Rebuild | New dependencies |
-| `package.json` | ❌ Rebuild | New dependencies |
+| `backend/*.py` | Yes | uvicorn --reload |
+| `frontend/src/*` | Yes | Next.js HMR (Fast Refresh) |
+| `workspace/*` | Yes | Volume mount |
+| `requirements.txt` | No | New dependencies |
+| `package.json` | No | New dependencies |
 
 ### Rebuild Times (with caching)
 

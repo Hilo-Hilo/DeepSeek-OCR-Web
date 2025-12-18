@@ -2,10 +2,14 @@
   <h1>DeepSeek-OCR Studio</h1>
 </div>
 
-## ⚡ Project Overview
+## Project Overview
 
 This project is a multimodal document parsing tool based on DeepSeek-OCR with Next.js frontend and FastAPI backend.
-![DeepSeek OCR Demo](./demo.png)
+
+**Designed for Nvidia DGX Spark**: This repository is optimized for the Nvidia DGX Spark environment. All Docker containers are tailored for the nightly release of PyTorch to ensure immediate compatibility and maximum performance on Blackwell GPUs. The setup is designed to be a single, simple process executable on the Nvidia DGX Spark.
+
+![DeepSeek OCR Demo](./assets/demo.png)
+
 This tool can efficiently process PDF documents and images, providing powerful Optical Character Recognition (OCR) capabilities, supporting multi-language text recognition, table parsing, chart analysis, and many other features.
 
 ### Key Features
@@ -19,7 +23,7 @@ This tool can efficiently process PDF documents and images, providing powerful O
 - **Data Visualization**: Supports reverse parsing of data analysis visualization charts
 - **Markdown Conversion**: Converts PDF content to structured Markdown format
 
-## 👀 Project Demo
+## Project Demo
 
 <div align="center">
 
@@ -45,22 +49,24 @@ This tool can efficiently process PDF documents and images, providing powerful O
 
 </div>
 
-## 🚀 Usage Guide
+## Usage Guide
 
 ### System Requirements
 
-⚠️ **Important Notice**:
-- **Operating System**: Linux (Ubuntu recommended)
-- **GPU Requirements**: GPU ≥ 7 GB VRAM (16–24 GB recommended for large images/multi-page PDFs)
-- **Compatibility Note**: RTX 50 series GPUs require special configuration (see SYSTEM_CHANGES.md)
+**Important Notice**:
+- **Platform**: Nvidia DGX Spark (optimized) / Linux
+- **GPU Requirements**: GPU >= 7 GB VRAM (16-24 GB recommended for large images/multi-page PDFs)
+- **Compatibility Note**: Tailored for PyTorch Nightly to support latest architectures (Blackwell).
 
 ### Quick Start
+
+This repository is designed for a **one-step setup** on Nvidia DGX Spark.
 
 Choose one of the following methods:
 
 | Method | Best For | Setup Time |
 |--------|----------|------------|
-| [Docker (Recommended)](#method-1-docker-recommended) | Production, Easy setup | ~10 min |
+| [Docker (Recommended)](#method-1-docker-recommended) | Production, Nvidia DGX Spark, Easy setup | ~10 min |
 | [Native Script](#method-2-native-script) | Development, Custom setup | ~20 min |
 | [Manual Installation](#method-3-manual-installation) | Full control | ~30 min |
 
@@ -68,7 +74,7 @@ Choose one of the following methods:
 
 ### Method 1: Docker (Recommended)
 
-Docker provides the easiest setup with all dependencies pre-configured.
+Docker provides the easiest setup with all dependencies pre-configured, specifically tailored for Nvidia DGX Spark with PyTorch Nightly.
 
 **Prerequisites:**
 - Docker 20.10+
@@ -82,7 +88,8 @@ pip install modelscope
 mkdir -p ./deepseek-ocr
 modelscope download --model deepseek-ai/DeepSeek-OCR --local_dir ./deepseek-ocr
 
-# 2. Build and run (use --network=host if you have DNS issues)
+# 2. Build and run (Optimized for Nvidia DGX Spark)
+# Use --network=host if you have DNS issues
 docker build --network=host -t deepseek-ocr-web .
 docker run -d --gpus all \
   -p 8002:8002 -p 3001:3000 \
@@ -171,7 +178,7 @@ npm run dev -- --hostname 0.0.0.0 --port 3001
 
 ---
 
-## 📁 File Locations
+## File Locations
 
 | Data | Location | Description |
 |------|----------|-------------|
@@ -182,18 +189,17 @@ npm run dev -- --hostname 0.0.0.0 --port 3001
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 - **[DOCKER.md](./DOCKER.md)** - Docker deployment guide, development mode, troubleshooting
-- **[SYSTEM_CHANGES.md](./SYSTEM_CHANGES.md)** - System-level changes for ARM64/Blackwell GPUs
 
 ---
 
-## 🙈 Contributing
+## Contributing
 
 We welcome contributions through GitHub PR submissions or issues. All forms of contribution are appreciated, including feature improvements, bug fixes, or documentation optimization.
 
-## 😎 Technical Communication
+## Technical Communication
 
 Scan to add our assistant, reply "DeepSeekOCR" to join the technical communication group.
 

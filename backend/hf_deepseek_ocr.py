@@ -33,7 +33,7 @@ class HFDeepseekOCR(nn.Module):
         self.dtype = dtype
         self.model_path = model_path
         
-        print(f"🔄 Loading DeepSeek OCR model from {model_path}...")
+        print(f"Loading DeepSeek OCR model from {model_path}...")
         
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
@@ -41,10 +41,10 @@ class HFDeepseekOCR(nn.Module):
         self.image_token_id = self.tokenizer.vocab.get(self.image_token)
         
         # Load vision encoders
-        print("  📷 Loading SAM vision encoder...")
+        print("  Loading SAM vision encoder...")
         self.sam_model = build_sam_vit_b()
         
-        print("  📷 Loading CLIP vision encoder...")
+        print("  Loading CLIP vision encoder...")
         self.vision_model = build_clip_l()
         
         # Load projector
@@ -57,7 +57,7 @@ class HFDeepseekOCR(nn.Module):
         self.view_seperator = nn.Parameter(torch.randn(n_embed) * embed_std)
         
         # Load language model using the model's custom class
-        print("  🧠 Loading language model...")
+        print("  Loading language model...")
         import sys
         sys.path.insert(0, model_path)
         
@@ -71,7 +71,7 @@ class HFDeepseekOCR(nn.Module):
                 device_map="auto",
             )
         except Exception as e:
-            print(f"  ⚠️ AutoModel failed: {e}")
+            print(f"  AutoModel failed: {e}")
             # Fallback: try loading just the language component
             try:
                 from transformers import AutoModelForCausalLM as AMFC
@@ -91,7 +91,7 @@ class HFDeepseekOCR(nn.Module):
                     ignore_mismatched_sizes=True,
                 )
             except Exception as e2:
-                print(f"  ❌ Language model loading failed: {e2}")
+                print(f"  Language model loading failed: {e2}")
                 raise RuntimeError(f"Could not load language model: {e2}")
         
         # Load vision weights from the checkpoint
@@ -107,7 +107,7 @@ class HFDeepseekOCR(nn.Module):
         # Set to eval mode
         self.eval()
         
-        print("✅ Model loaded successfully!")
+        print("Model loaded successfully!")
     
     def _load_vision_weights(self, model_path: str):
         """Load vision encoder weights from the model checkpoint."""
@@ -128,26 +128,26 @@ class HFDeepseekOCR(nn.Module):
             for f in bin_files:
                 state_dict.update(torch.load(f, map_location="cpu"))
         else:
-            print("  ⚠️ No checkpoint files found, using randomly initialized vision weights")
+            print("  No checkpoint files found, using randomly initialized vision weights")
             return
         
         # Extract and load SAM weights
         sam_state = {k.replace("model.sam_model.", ""): v for k, v in state_dict.items() if "sam_model" in k}
         if sam_state:
             self.sam_model.load_state_dict(sam_state, strict=False)
-            print(f"  ✅ Loaded {len(sam_state)} SAM weights")
+            print(f"  Loaded {len(sam_state)} SAM weights")
         
         # Extract and load CLIP weights
         clip_state = {k.replace("model.vision_model.", ""): v for k, v in state_dict.items() if "vision_model" in k}
         if clip_state:
             self.vision_model.load_state_dict(clip_state, strict=False)
-            print(f"  ✅ Loaded {len(clip_state)} CLIP weights")
+            print(f"  Loaded {len(clip_state)} CLIP weights")
         
         # Extract and load projector weights
         proj_state = {k.replace("model.projector.", ""): v for k, v in state_dict.items() if "projector" in k and "vision" not in k}
         if proj_state:
             self.projector.load_state_dict(proj_state, strict=False)
-            print(f"  ✅ Loaded {len(proj_state)} projector weights")
+            print(f"  Loaded {len(proj_state)} projector weights")
         
         # Load special tokens
         if "model.image_newline" in state_dict:
@@ -483,4 +483,3 @@ class HFOutputItem:
     """Single output item."""
     def __init__(self, text: str):
         self.text = text
-

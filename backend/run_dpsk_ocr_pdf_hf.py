@@ -1,180 +1,78 @@
-"""
-run_dpsk_ocr_pdf_hf.py
-----------------------
-PDF OCR using Hugging Face Transformers (no vLLM dependency).
-Uses the official model.infer() method from DeepSeek-OCR.
-https://github.com/deepseek-ai/DeepSeek-OCR
-"""
-
 import os
-
-# Disable JIT compilation for Blackwell GPU compatibility
-os.environ["PYTORCH_JIT"] = "0"
-# Respect outer environment (docker-compose / subprocess env). Only set a default.
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
-
-import fitz
-import io
+import sys
 import torch
-from tqdm import tqdm
-from PIL import Image
-
-# Suppress dynamo errors
-torch._dynamo.config.suppress_errors = True
-
+import warnings
 from transformers import AutoModel, AutoTokenizer
-from config import MODEL_PATH, INPUT_PATH, OUTPUT_PATH, PROMPT
-
+from config import *
 
 class Colors:
-    RED = '\033[31m'
-    GREEN = '\033[32m'
-    YELLOW = '\033[33m'
-    BLUE = '\033[34m'
-    RESET = '\033[0m'
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    RESET = "\033[0m"
 
+# Disable JIT if needed
+os.environ["PYTORCH_JIT"] = "0"
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0") # Respect outer environment, only set default
 
-def ensure_cuda_supported() -> None:
-    """DeepSeek-OCR's `model.infer()` uses CUDA tensors internally.
+warnings.filterwarnings("ignore")
 
-    CPU-only execution is not supported; make failures explicit and actionable.
+def pick_device() -> str:
+    """Pick a safe device for inference.
+
+    If the current PyTorch build does not include kernels for the GPU's SM
+    version (e.g. sm_121), running on CUDA will crash. In that case, prefer CPU.
     """
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is not available. DeepSeek-OCR infer() requires a CUDA-capable PyTorch build.")
-
-    # Some platforms (e.g. GB10 sm_121) may not appear in torch.cuda.get_arch_list()
-    # even though CUDA ops work via PTX/JIT. Run a tiny smoke test instead.
-    cap = torch.cuda.get_device_capability(0)
-    arch = f"sm_{cap[0]}{cap[1]}"
-    arch_list = torch.cuda.get_arch_list()
-    if arch not in arch_list:
-        print(
-            f"{Colors.YELLOW}⚠️  GPU arch {arch} not explicitly listed in this PyTorch build "
-            f"({', '.join(arch_list)}). Verifying CUDA works with a quick smoke test...{Colors.RESET}"
-        )
-
+        return "cpu"
     try:
-        x = torch.zeros((1,), device="cuda")
-        torch.cuda.synchronize()
-        _ = x.item()
+        cap = torch.cuda.get_device_capability(0)
+        arch = f"sm_{cap[0]}{cap[1]}"
+        arch_list = torch.cuda.get_arch_list()
+        if arch not in arch_list:
+            print(
+                f"{Colors.YELLOW}Warning: GPU arch {arch} not explicitly listed in this PyTorch build "
+                f"({', '.join(arch_list)}). Falling back to CPU.{Colors.RESET}"
+            )
+            return "cpu"
     except Exception as e:
-        raise RuntimeError(f"CUDA smoke test failed: {e}") from e
-
-
-# Initialize model globally using official method
-ensure_cuda_supported()
-print(f'{Colors.BLUE}Loading DeepSeek OCR model (Hugging Face Transformers)...{Colors.RESET}')
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
-model = AutoModel.from_pretrained(MODEL_PATH, trust_remote_code=True, use_safetensors=True)
-model = model.eval().cuda().to(torch.bfloat16)
-print(f'{Colors.GREEN}✅ Model loaded successfully on CUDA!{Colors.RESET}')
-
-
-def pdf_to_images_high_quality(pdf_path, dpi=144):
-    """Convert PDF to high-quality images."""
-    images = []
-    pdf_document = fitz.open(pdf_path)
-    
-    zoom = dpi / 72.0
-    matrix = fitz.Matrix(zoom, zoom)
-    
-    for page_num in range(pdf_document.page_count):
-        page = pdf_document[page_num]
-        pixmap = page.get_pixmap(matrix=matrix, alpha=False)
-        Image.MAX_IMAGE_PIXELS = None
-        img_data = pixmap.tobytes("png")
-        img = Image.open(io.BytesIO(img_data))
-        images.append(img)
-    
-    pdf_document.close()
-    return images
-
+        print(f"{Colors.YELLOW}Warning: Failed to detect CUDA arch ({e}). Attempting CUDA anyway.{Colors.RESET}")
+    return "cuda"
 
 if __name__ == "__main__":
-    os.makedirs(OUTPUT_PATH, exist_ok=True)
-    os.makedirs(f'{OUTPUT_PATH}/images', exist_ok=True)
+    print(f'{Colors.BLUE}Loading DeepSeek OCR model (Hugging Face Transformers)...{Colors.RESET}')
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
+    model = AutoModel.from_pretrained(MODEL_PATH, trust_remote_code=True, use_safetensors=True)
     
-    print(f'{Colors.RED}PDF loading .....{Colors.RESET}')
-    images = pdf_to_images_high_quality(INPUT_PATH)
-    print(f'{Colors.YELLOW}Loaded {len(images)} pages{Colors.RESET}')
+    device = pick_device()
+    model = model.eval()
+    if device == "cuda":
+        model = model.cuda().to(torch.bfloat16)
+        print(f'{Colors.GREEN}Model loaded successfully on CUDA!{Colors.RESET}')
+    else:
+        model = model.to("cpu").to(torch.float32)
+        print(f'{Colors.GREEN}Model loaded successfully on CPU.{Colors.RESET}')
+
+    print(f'{Colors.BLUE}Running OCR inference...{Colors.RESET}')
     
-    # Process each page
-    print(f'{Colors.GREEN}Running OCR inference...{Colors.RESET}')
-    all_results = []
-    
-    for idx, img in enumerate(tqdm(images, desc="OCR inference")):
-        try:
-            # Save image temporarily
-            temp_img_path = f'/tmp/ocr_page_{idx}.jpg'
-            img.save(temp_img_path)
-            
-            # Run inference using official method
-            result = model.infer(
-                tokenizer,
-                prompt=PROMPT,
-                image_file=temp_img_path,
-                output_path=OUTPUT_PATH,
-                base_size=1024,
-                image_size=640,
-                crop_mode=True,
-                save_results=False,
-                test_compress=False
-            )
-            
-            # The infer method prints output but returns None when save_results=False
-            # We need to capture the output differently
-            # For now, just run with save_results=True for the last page to get the format
-            
-            all_results.append(result if result else "")
-            
-            # Clean up temp file
-            os.remove(temp_img_path)
-            
-        except Exception as e:
-            print(f"{Colors.RED}Error processing page {idx + 1}: {e}{Colors.RESET}")
-            all_results.append("")
-    
-    # For multi-page PDFs, run each page and save results
-    print(f'{Colors.BLUE}Processing complete. Running final save...{Colors.RESET}')
-    
-    # Process all pages and combine results
-    mmd_path = OUTPUT_PATH + '/' + INPUT_PATH.split('/')[-1].replace('.pdf', '.mmd')
-    
-    contents = ''
-    for idx, img in enumerate(tqdm(images, desc="Saving results")):
-        temp_img_path = f'/tmp/ocr_final_{idx}.jpg'
-        img.save(temp_img_path)
-        
-        try:
-            # Run with save_results to get proper output
-            page_output_path = f'{OUTPUT_PATH}/page_{idx}'
-            os.makedirs(page_output_path, exist_ok=True)
-            
-            model.infer(
-                tokenizer,
-                prompt=PROMPT,
-                image_file=temp_img_path,
-                output_path=page_output_path,
-                base_size=1024,
-                image_size=640,
-                crop_mode=True,
-                save_results=True,
-                test_compress=False
-            )
-            
-            # Read the result
-            result_file = f'{page_output_path}/result.mmd'
-            if os.path.exists(result_file):
-                with open(result_file, 'r') as f:
-                    page_content = f.read()
-                contents += page_content + f'\n\n<--- Page {idx + 1} --->\n\n'
-        except Exception as e:
-            print(f"{Colors.RED}Error saving page {idx + 1}: {e}{Colors.RESET}")
-        
-        os.remove(temp_img_path)
-    
-    # Save combined results
-    with open(mmd_path, 'w', encoding='utf-8') as f:
-        f.write(contents)
-    
-    print(f'{Colors.GREEN}✅ OCR complete! Results saved to {OUTPUT_PATH}{Colors.RESET}')
+    try:
+        res = model.infer(
+            tokenizer,
+            prompt=PROMPT,
+            pdf_file=INPUT_PATH,
+            output_path=OUTPUT_PATH,
+            base_size=BASE_SIZE,
+            image_size=IMAGE_SIZE,
+            crop_mode=CROP_MODE,
+            min_crops=MIN_CROPS,
+            max_crops=MAX_CROPS,
+            num_workers=NUM_WORKERS,
+            print_num_vis_tokens=PRINT_NUM_VIS_TOKENS,
+            skip_repeat=SKIP_REPEAT,
+            save_results=True
+        )
+        print(f'{Colors.GREEN}OCR complete! Results saved to {OUTPUT_PATH}{Colors.RESET}')
+    except Exception as e:
+        print(f'{Colors.RED}Inference failed: {e}{Colors.RESET}')
+        sys.exit(1)

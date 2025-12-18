@@ -181,12 +181,12 @@ async def websocket_progress(websocket: WebSocket, task_id: str):
     """WebSocket progress push"""
     await websocket.accept()
     active_connections[task_id] = websocket
-    print(f"🌐 WebSocket connected: {task_id}")
+    print(f"WebSocket connected: {task_id}")
     try:
         while True:
             await asyncio.sleep(1)
     except WebSocketDisconnect:
-        print(f"❌ WebSocket disconnected: {task_id}")
+        print(f"WebSocket disconnected: {task_id}")
         if task_id in active_connections:
             del active_connections[task_id]
 
@@ -196,12 +196,12 @@ async def websocket_console(websocket: WebSocket, task_id: str):
     """WebSocket console output streaming"""
     await websocket.accept()
     console_connections[task_id] = websocket
-    print(f"🖥️ Console WebSocket connected: {task_id}")
+    print(f"Console WebSocket connected: {task_id}")
     try:
         while True:
             await asyncio.sleep(1)
     except WebSocketDisconnect:
-        print(f"❌ Console WebSocket disconnected: {task_id}")
+        print(f"Console WebSocket disconnected: {task_id}")
         if task_id in console_connections:
             del console_connections[task_id]
 
@@ -401,17 +401,17 @@ async def delete_task(task_id: str):
             result_path = Path(result_dir)
             if result_path.exists():
                 shutil.rmtree(result_path)
-                print(f"🗑️ Deleted result directory: {result_path}")
+                print(f"Deleted result directory: {result_path}")
         
         # Delete task state file
         state_file = LOGS_DIR / f"task_{task_id}.json"
         if state_file.exists():
             state_file.unlink()
-            print(f"🗑️ Deleted task state file: {state_file}")
+            print(f"Deleted task state file: {state_file}")
         
         return {"status": "success", "message": f"Task {task_id} deleted"}
     except Exception as e:
-        print(f"❌ Error deleting task {task_id}: {e}")
+        print(f"Error deleting task {task_id}: {e}")
         return {"status": "error", "message": str(e)}
 
 

@@ -18,13 +18,13 @@ RED="\033[1;31m"
 RESET="\033[0m"
 
 echo -e "${GREEN}============================================================${RESET}"
-echo -e "🚀 ${YELLOW}DeepSeek-OCR-Web Environment Initialization${RESET}"
+echo -e "${YELLOW}DeepSeek-OCR-Web Environment Initialization${RESET}"
 echo -e "${GREEN}============================================================${RESET}"
 
 # 0. Check Architecture
 ARCH=$(uname -m)
 OS=$(uname -s)
-echo -e "${YELLOW}ℹ️  Detected System: ${OS} ${ARCH}${RESET}"
+echo -e "${YELLOW}Detected System: ${OS} ${ARCH}${RESET}"
 
 # 1. Conda Setup
 echo -e "${YELLOW}>>> Step 1. Checking Conda Environment${RESET}"
@@ -55,7 +55,7 @@ find_conda() {
 CONDA_EXE=$(find_conda)
 
 if [ -z "$CONDA_EXE" ]; then
-    echo -e "${RED}❌ Conda not found.${RESET}"
+    echo -e "${RED}Conda not found.${RESET}"
     echo -e "${YELLOW}Please install Miniconda first:${RESET}"
     echo -e "  wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${ARCH}.sh -O miniconda.sh"
     echo -e "  bash miniconda.sh -b -p \$HOME/miniconda3"
@@ -64,7 +64,7 @@ if [ -z "$CONDA_EXE" ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✅ Found Conda: $CONDA_EXE${RESET}"
+echo -e "${GREEN}Found Conda: $CONDA_EXE${RESET}"
 # Ensure conda is initialized in this script session
 eval "$($CONDA_EXE shell.bash hook)"
 
@@ -80,7 +80,7 @@ conda activate deepseek-ocr
 
 # Verify Node.js isolation
 NODE_PATH=$(which node)
-echo -e "${GREEN}✅ Using Isolated Node.js: $NODE_PATH${RESET}"
+echo -e "${GREEN}Using Isolated Node.js: $NODE_PATH${RESET}"
 
 # 3. Install PyTorch
 echo -e "${YELLOW}>>> Step 3. Installing PyTorch${RESET}"
@@ -91,10 +91,10 @@ pip install torch torchvision torchaudio
 echo -e "${YELLOW}>>> Step 4. Installing vLLM${RESET}"
 # vLLM support for ARM64 can be experimental. We try standard pip install first.
 if pip install vllm; then
-    echo -e "${GREEN}✅ vLLM installed successfully.${RESET}"
+    echo -e "${GREEN}vLLM installed successfully.${RESET}"
 else
-    echo -e "${RED}⚠️  Standard vLLM install failed. This is expected on some ARM64 configs.${RESET}"
-    echo -e "${YELLOW}ℹ️  Attempting to build from source or continuing without it (Inference may fail)...${RESET}"
+    echo -e "${RED}Standard vLLM install failed. This is expected on some ARM64 configs.${RESET}"
+    echo -e "${YELLOW}Attempting to build from source or continuing without it (Inference may fail)...${RESET}"
     # In a real scenario, we might trigger a build from source here, but that's risky/long.
     # We'll just warn the user.
 fi
@@ -105,14 +105,14 @@ pip install -r requirements.txt
 
 # Flash Attention (Optional but recommended)
 echo -e "${YELLOW}Installing flash-attn (may take time to compile)...${RESET}"
-pip install flash-attn --no-build-isolation || echo -e "${RED}⚠️  flash-attn install failed (Non-critical, but slower).${RESET}"
+pip install flash-attn --no-build-isolation || echo -e "${RED}flash-attn install failed (Non-critical, but slower).${RESET}"
 
 # 6. Download Model
 echo -e "${YELLOW}>>> Step 6. Model Setup${RESET}"
 pip install modelscope
 mkdir -p ./deepseek-ocr
 modelscope download --model deepseek-ai/DeepSeek-OCR --local_dir ./deepseek-ocr || {
-    echo -e "${RED}⚠️  Model download failed. Check network.${RESET}"
+    echo -e "${RED}Model download failed. Check network.${RESET}"
 }
 
 # 7. Frontend Setup
@@ -126,7 +126,7 @@ if [ -d "frontend" ]; then
     npm install
     cd ..
 else
-    echo -e "${YELLOW}⚠️  Frontend directory not found.${RESET}"
+    echo -e "${YELLOW}Frontend directory not found.${RESET}"
 fi
 
 # 8. .env Configuration
@@ -144,7 +144,7 @@ else
 fi
 
 echo -e "${GREEN}============================================================${RESET}"
-echo -e "🎉 Setup Complete!"
-echo -e "ℹ️  Environment: deepseek-ocr"
-echo -e "ℹ️  To activate: ${YELLOW}conda activate deepseek-ocr${RESET}"
+echo -e "Setup Complete!"
+echo -e "Environment: deepseek-ocr"
+echo -e "To activate: ${YELLOW}conda activate deepseek-ocr${RESET}"
 echo -e "${GREEN}============================================================${RESET}"

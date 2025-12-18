@@ -113,10 +113,10 @@ def cancel_ocr_task(task_id: str) -> bool:
             # Remove tracking entry (race-safe)
             _running_processes.pop(task_id, None)
 
-            print(f"🛑 Task {task_id} cancelled")
+            print(f"Task {task_id} cancelled")
             return True
         except Exception as e:
-            print(f"❌ Failed to cancel task {task_id}: {e}")
+            print(f"Failed to cancel task {task_id}: {e}")
             return False
         finally:
             _running_processes.pop(task_id, None)
@@ -131,10 +131,10 @@ def cancel_ocr_task(task_id: str) -> bool:
                 state["message"] = "Task was cancelled by user"
                 write_task_state(task_id, state)
             os.kill(pid, signal.SIGTERM)
-            print(f"🛑 Task {task_id} cancelled via PID {pid}")
+            print(f"Task {task_id} cancelled via PID {pid}")
             return True
         except (ProcessLookupError, PermissionError) as e:
-            print(f"❌ Failed to kill process {state.get('pid')}: {e}")
+            print(f"Failed to kill process {state.get('pid')}: {e}")
             return False
     
     return False
@@ -164,7 +164,7 @@ def override_config(model_path: str, input_path: str, output_path: str, prompt: 
         "TOKENIZER = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)",
     ]
     CONFIG_PATH.write_text("\n".join(config_lines), encoding="utf-8")
-    print(f"✅ Temporary config.py override successful: {CONFIG_PATH}")
+    print(f"Temporary config.py override successful: {CONFIG_PATH}")
 
 
 # ====== Core Task Execution ======
@@ -187,7 +187,7 @@ def run_ocr_task(
         existing_state = read_task_state(task_id)
         if existing_state and existing_state.get("status") == "cancelled":
             runtime = int(time.time() - start_time)
-            print(f"🛑 Task {task_id} was cancelled before start")
+            print(f"Task {task_id} was cancelled before start")
             return {"status": "cancelled", "message": "Task was cancelled by user", "runtime": runtime}
 
         result_dir = create_result_dir(prefix=f"ocr_task_{task_id}")
@@ -197,7 +197,7 @@ def run_ocr_task(
         after_dir_state = read_task_state(task_id)
         if after_dir_state and after_dir_state.get("status") == "cancelled":
             runtime = int(time.time() - start_time)
-            print(f"🛑 Task {task_id} cancelled before initial state write")
+            print(f"Task {task_id} cancelled before initial state write")
             return {"status": "cancelled", "message": "Task was cancelled by user", "runtime": runtime}
 
         write_task_state(task_id, {
@@ -214,7 +214,7 @@ def run_ocr_task(
         mid_state = read_task_state(task_id)
         if mid_state and mid_state.get("status") == "cancelled":
             runtime = int(time.time() - start_time)
-            print(f"🛑 Task {task_id} cancelled before subprocess start")
+            print(f"Task {task_id} cancelled before subprocess start")
             return {"status": "cancelled", "message": "Task was cancelled by user", "runtime": runtime}
 
         file_type = detect_file_type(input_path)
@@ -222,15 +222,15 @@ def run_ocr_task(
 
         override_config(MODEL_PATH, input_path, str(result_dir), prompt)
 
-        print(f"🚀 Starting DeepSeek OCR task ({file_type.upper()})")
-        print(f"📄 Using script: {script_path}")
-        print(f"📁 Output path: {result_dir}")
+        print(f"Starting DeepSeek OCR task ({file_type.upper()})")
+        print(f"Using script: {script_path}")
+        print(f"Output path: {result_dir}")
 
         # Re-check cancellation just before spawning the subprocess.
         pre_spawn_state = read_task_state(task_id)
         if pre_spawn_state and pre_spawn_state.get("status") == "cancelled":
             runtime = int(time.time() - start_time)
-            print(f"🛑 Task {task_id} cancelled before spawn")
+            print(f"Task {task_id} cancelled before spawn")
             return {"status": "cancelled", "message": "Task was cancelled by user", "runtime": runtime}
 
         command = ["python", str(script_path)]
@@ -349,7 +349,7 @@ def run_ocr_task(
         # Check if task was cancelled
         current_state = read_task_state(task_id)
         if current_state and current_state.get("status") == "cancelled":
-            print(f"🛑 Task {task_id} was cancelled")
+            print(f"Task {task_id} was cancelled")
             return {"status": "cancelled", "message": "Task was cancelled by user", "runtime": runtime}
 
         if process.returncode != 0:
@@ -374,7 +374,7 @@ def run_ocr_task(
             "runtime": runtime
         })
 
-        print(f"✅ Task completed: {task_id} (runtime: {runtime}s)")
+        print(f"Task completed: {task_id} (runtime: {runtime}s)")
         return {
             "status": "finished", 
             "task_id": task_id, 
@@ -397,5 +397,5 @@ def run_ocr_task(
             "timestamp": timestamp,
             "runtime": runtime
         })
-        print(f"❌ Task error {task_id}: {e}")
+        print(f"Task error {task_id}: {e}")
         return {"status": "error", "message": str(e), "runtime": runtime}

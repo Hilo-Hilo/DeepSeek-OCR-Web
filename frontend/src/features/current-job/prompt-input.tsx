@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info, Loader2, Sparkles, Square } from "lucide-react";
+import { Info, Loader2, Sparkles, Square, Check, X } from "lucide-react";
 
 type Props = {
   prompt: string;
@@ -174,11 +174,15 @@ export function PromptInput({
                       </p>
                       <div className="flex flex-col gap-2">
                         <div className="flex items-start gap-2 text-sm">
-                          <span className="text-emerald-600 font-bold shrink-0">✓ Correct:</span>
+                          <span className="text-emerald-600 font-bold shrink-0 flex items-center gap-1">
+                            <Check className="h-4 w-4" /> Correct:
+                          </span>
                           <code className="bg-zinc-950 text-zinc-100 px-2 py-0.5 rounded">&lt;image&gt; Transcribe this text.</code>
                         </div>
                         <div className="flex items-start gap-2 text-sm">
-                          <span className="text-red-600 font-bold shrink-0">✗ Incorrect:</span>
+                          <span className="text-red-600 font-bold shrink-0 flex items-center gap-1">
+                            <X className="h-4 w-4" /> Incorrect:
+                          </span>
                           <code className="bg-zinc-950 text-zinc-100 px-2 py-0.5 rounded">Please read this &lt;image&gt;</code>
                         </div>
                       </div>
@@ -369,6 +373,3 @@ Mark illegible words with [?]`}</pre>
     </div>
   );
 }
-
-
-

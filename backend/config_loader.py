@@ -38,7 +38,7 @@ if not EXAMPLE_ENV_FILE.exists():
 
 # ========== Step 3. Load .env File ==========
 if not ENV_FILE.exists():
-    print("[⚠️ Warning] .env file not found, created example .env.example.")
+    print("[Warning] .env file not found, created example .env.example.")
     print("Please copy .env.example -> .env and fill in MODEL_PATH, then restart.")
 
 load_dotenv(ENV_FILE)
@@ -52,10 +52,10 @@ MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "10"))
 
 # ========== Step 5. Check Model Path Validity ==========
 if MODEL_PATH is None or MODEL_PATH.strip() == "":
-    raise ValueError("❌ MODEL_PATH not set in .env, please fill in model path and restart service.")
+    raise ValueError("Error: MODEL_PATH not set in .env, please fill in model path and restart service.")
 
 if not Path(MODEL_PATH).exists():
-    print(f"[⚠️ Warning] Specified model path does not exist: {MODEL_PATH}")
+    print(f"[Warning] Specified model path does not exist: {MODEL_PATH}")
     print("Please ensure DeepSeek-OCR model weights are downloaded.")
 
 
@@ -66,11 +66,11 @@ for directory in [WORKSPACE_PATH, UPLOAD_DIR, RESULTS_DIR, LOGS_DIR]:
 
 # ========== Step 7. Debug Output (Print Current Effective Configuration) ==========
 print("=" * 60)
-print("🔧 DeepSeek-OCR Backend Configuration Loaded")
-print(f"📁 Model Path:      {MODEL_PATH}")
-print(f"🖥️  GPU Device:     {DEVICE_ID}")
-print(f"⚙️  Max Concurrency: {MAX_CONCURRENCY}")
-print(f"📂 Workspace Path:  {WORKSPACE_PATH}")
+print("DeepSeek-OCR Backend Configuration Loaded")
+print(f"Model Path:      {MODEL_PATH}")
+print(f"GPU Device:     {DEVICE_ID}")
+print(f"Max Concurrency: {MAX_CONCURRENCY}")
+print(f"Workspace Path:  {WORKSPACE_PATH}")
 print("=" * 60)
 
 
