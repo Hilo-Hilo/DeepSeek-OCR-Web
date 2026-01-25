@@ -2,7 +2,7 @@
 
 Complete guide for running DeepSeek-OCR-Web in Docker with GPU support.
 
-**Optimized for Nvidia DGX Spark**: This setup is tailored for the Nvidia DGX Spark environment using PyTorch Nightly for Blackwell GPU support.
+**Optimized for Nvidia DGX Spark**: This setup is tailored for the Nvidia DGX Spark environment using PyTorch CUDA 13 (`cu130`) wheels for Blackwell-family GPU support. On GB10 (`sm_121`) you may still see a PyTorch warning about supported CUDA capability; this is expected and does not necessarily mean GPU inference will fail.
 
 ## Table of Contents
 
@@ -88,7 +88,7 @@ docker compose up -d
 ```
 
 **Note (Nvidia DGX Spark / Blackwell)**:
-- The Docker build installs **PyTorch nightly `cu128`** to support the Blackwell GPU architecture (sm_121). The first build can take a while and download several GB of wheels.
+- The Docker build installs **official PyTorch CUDA 13.0 (`cu130`)** wheels. On GB10 (`sm_121`), current wheels typically ship `sm_120` + `compute_120` PTX; you may still see a warning like “supported capability ... (8.0) - (12.0)”. The first build can take a while and download several GB of wheels.
 - `flash-attn` is intentionally **not installed** in Docker to avoid ABI mismatches when upgrading PyTorch.
 
 ### Option 2: Docker CLI
@@ -337,7 +337,11 @@ The Hugging Face inference scripts will **try GPU first** when CUDA is available
 
 Mitigations used by this repo:
 - `PYTORCH_JIT=0` environment variable
-- Automatic CPU fallback when the GPU arch is not supported
+- Force **eager attention** in HF runners (avoids flash/SDPA fused kernels)
+- Force **math-only SDPA** when the GPU arch is not explicitly supported by the installed PyTorch build
+- On fatal CUDA errors (e.g. `unspecified launch failure`), the HF runner will **restart itself in CPU-only mode** to avoid interacting with a broken CUDA context
+
+If you see `nvidia-smi` showing `ERR!` or Docker reporting NVML errors like `gpu requires reset`, the GPU is in a bad state and typically needs a **reboot (or power-cycle)** before CUDA will work again.
 
 ### Build Failures
 

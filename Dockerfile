@@ -16,8 +16,8 @@ ENV CUDA_HOME=/usr/local/cuda
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 ENV PATH=/usr/local/cuda/bin:$PATH
 
-# Verify PyTorch CUDA is available
-RUN python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+# Print base image PyTorch build info (CUDA availability is runtime-dependent)
+RUN python -c "import torch; print(f'Base image PyTorch: {torch.__version__} (built CUDA: {torch.version.cuda})')"
 
 # Install Node.js 22
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -31,17 +31,13 @@ WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# PyTorch upgrade for GB10 / Blackwell (sm_121)
-# The NGC 24.08 PyTorch build does not include sm_121 kernels, which causes
-# DeepSeek-OCR's `.infer()` (which calls `.cuda()`) to fail at runtime.
-# Install nightly cu128 wheels that include newer CUDA libs and sm_121 support.
-RUN pip install --no-cache-dir --upgrade --pre torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/nightly/cu128
-
-# CRITICAL: Fix version compatibility for NVIDIA PyTorch container
-# 1. Downgrade numpy to 1.x (container's PyTorch was built with NumPy 1.x)
-# 2. Pin transformers to 4.45.0 (compatible with DeepSeek-OCR model)
-RUN pip install "numpy<2" "transformers==4.45.0" --force-reinstall
+# PyTorch for GB10 / Blackwell-family GPUs
+# Use official CUDA 13.0 (cu130) wheels. On GB10 (sm_121) these wheels typically ship
+# sm_120 + compute_120 PTX, so PyTorch may warn about supported capability, but CUDA
+# ops can still work.
+RUN pip install --no-cache-dir --upgrade \
+    torch==2.10.0+cu130 torchvision==0.25.0+cu130 torchaudio==2.10.0+cu130 \
+    --index-url https://download.pytorch.org/whl/cu130
 
 # flash-attn is optional, but when upgrading PyTorch (e.g. to nightly cu128),
 # any prebuilt flash-attn binaries can become ABI-incompatible and break model

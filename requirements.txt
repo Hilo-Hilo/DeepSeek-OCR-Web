@@ -1,14 +1,14 @@
 # DeepSeek-OCR-Web Dependencies
 # For NVIDIA Blackwell (sm_121) ARM64 systems
 
-# Core ML/AI - PyTorch nightly with CUDA 12.8 support
-# Install separately: pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
-# torch>=2.10.0.dev
-# torchvision>=0.25.0.dev
-# torchaudio>=2.10.0.dev
+# Core ML/AI - PyTorch CUDA 13 (cu130) for Blackwell-family GPUs
+# Install separately (recommended):
+#   pip install --upgrade \
+#     torch==2.10.0+cu130 torchvision==0.25.0+cu130 torchaudio==2.10.0+cu130 \
+#     --index-url https://download.pytorch.org/whl/cu130
 
 # Hugging Face
-transformers>=4.45.0
+transformers==4.45.0
 accelerate>=1.12.0
 tokenizers>=0.20.0
 
