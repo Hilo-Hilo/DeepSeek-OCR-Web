@@ -6,7 +6,7 @@
 
 This project is a multimodal document parsing tool based on DeepSeek-OCR with Next.js frontend and FastAPI backend.
 
-**Designed for Nvidia DGX Spark**: This repository is optimized for the Nvidia DGX Spark environment. Docker builds install the official PyTorch CUDA 13 (`cu130`) wheels. On GB10 (`sm_121`) you may still see a PyTorch warning about supported CUDA capability; this is expected and does not necessarily mean GPU inference will fail.
+**Designed for Nvidia DGX Spark**: This repository is optimized for the Nvidia DGX Spark environment. Docker builds use the NVIDIA NGC PyTorch `25.12` base image (PyTorch built with CUDA 13.1). On GB10 (`sm_121`) you may still see a PyTorch warning about supported CUDA capability; this is expected and does not necessarily mean GPU inference will fail.
 
 ![DeepSeek OCR Demo](./assets/demo.png)
 
@@ -56,7 +56,7 @@ This tool can efficiently process PDF documents and images, providing powerful O
 **Important Notice**:
 - **Platform**: Nvidia DGX Spark (optimized) / Linux
 - **GPU Requirements**: GPU >= 7 GB VRAM (16-24 GB recommended for large images/multi-page PDFs)
-- **Compatibility Note**: Uses PyTorch CUDA 13 (`cu130`) wheels for Blackwell-family GPUs. Some builds may still warn on GB10 (`sm_121`).
+- **Compatibility Note**: Uses NVIDIA NGC PyTorch `25.12` (CUDA 13.1). Some builds may still warn on GB10 (`sm_121`).
 
 ### Quick Start
 
@@ -74,7 +74,7 @@ Choose one of the following methods:
 
 ### Method 1: Docker (Recommended)
 
-Docker provides the easiest setup with all dependencies pre-configured, specifically tailored for Nvidia DGX Spark with PyTorch CUDA 13 (`cu130`).
+Docker provides the easiest setup with all dependencies pre-configured, specifically tailored for Nvidia DGX Spark with NVIDIA NGC PyTorch `25.12` (CUDA 13.1).
 
 **Prerequisites:**
 - Docker 20.10+

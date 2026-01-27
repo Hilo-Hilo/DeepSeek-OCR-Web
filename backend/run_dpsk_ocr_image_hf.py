@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+import subprocess
 import torch
 import warnings
 from transformers import AutoModel, AutoTokenizer
@@ -15,7 +17,31 @@ class Colors:
 
 # Disable JIT if needed (for Blackwell compatibility)
 os.environ["PYTORCH_JIT"] = "0"
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0") # Respect outer environment, only set default
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+def _force_cpu() -> bool:
+    return _truthy_env("DEEPSEEK_OCR_FORCE_CPU")
+
+
+def _ensure_cuda_visible_devices_default() -> None:
+    """If CUDA_VISIBLE_DEVICES is empty/unset, default to GPU 0.
+
+    Note: an *empty* CUDA_VISIBLE_DEVICES hides all GPUs from CUDA/PyTorch.
+    """
+    if _force_cpu():
+        # Hide GPUs from PyTorch so it won't touch a potentially broken CUDA context.
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        return
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if cvd is None or cvd.strip() == "":
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+
+# Respect outer environment, but treat empty value as "unset".
+_ensure_cuda_visible_devices_default()
 
 warnings.filterwarnings("ignore")
 
@@ -40,7 +66,13 @@ def _force_safe_sdpa_kernels(reason: str) -> None:
 
 def configure_cuda_stability() -> None:
     """Best-effort knobs to reduce GPU kernel crashes on newer architectures."""
-    if not torch.cuda.is_available():
+    if _force_cpu():
+        return
+    try:
+        if not torch.cuda.is_available():
+            return
+    except Exception as e:
+        print(f"{Colors.YELLOW}Warning: CUDA probe failed during stability setup ({e}).{Colors.RESET}")
         return
     arch = _cuda_arch()
     try:
@@ -55,7 +87,7 @@ def configure_cuda_stability() -> None:
 
 def restart_self_cpu_only() -> None:
     """Restart this script in CPU-only mode (fresh process, no CUDA context)."""
-    if os.environ.get("DEEPSEEK_OCR_FORCE_CPU", "").lower() in ("1", "true", "yes"):
+    if _force_cpu():
         return
     print(f"{Colors.YELLOW}Restarting in CPU-only mode to recover from CUDA failure...{Colors.RESET}")
     env = os.environ.copy()
@@ -63,6 +95,46 @@ def restart_self_cpu_only() -> None:
     # Hide GPUs from PyTorch so it won't touch a potentially broken CUDA context.
     env["CUDA_VISIBLE_DEVICES"] = ""
     os.execvpe(sys.executable, [sys.executable] + sys.argv, env)
+
+
+def restart_self_cuda_reinit(reason: str) -> None:
+    """Restart this script once to re-initialize CUDA in a fresh process."""
+    if _truthy_env("DEEPSEEK_OCR_CUDA_REINIT"):
+        return
+    print(f"{Colors.YELLOW}Restarting once to re-initialize CUDA ({reason})...{Colors.RESET}")
+    env = os.environ.copy()
+    env["DEEPSEEK_OCR_CUDA_REINIT"] = "1"
+    env.pop("DEEPSEEK_OCR_FORCE_CPU", None)
+    # If CUDA_VISIBLE_DEVICES is empty (hides GPUs), default back to GPU 0.
+    if env.get("CUDA_VISIBLE_DEVICES", "").strip() == "":
+        env["CUDA_VISIBLE_DEVICES"] = "0"
+    os.execvpe(sys.executable, [sys.executable] + sys.argv, env)
+
+
+def _nvidia_smi_summary() -> str | None:
+    """Best-effort GPU visibility info (only used when CUDA looks unavailable)."""
+    try:
+        out = subprocess.check_output(["nvidia-smi", "-L"], stderr=subprocess.STDOUT, text=True, timeout=5)
+        out = (out or "").strip()
+        return out or None
+    except Exception:
+        return None
+
+
+def _cuda_available_with_retry(retries: int = 3, delay_s: float = 1.0) -> bool:
+    """Retry CUDA availability check to handle transient init failures after long idle."""
+    last: str | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            if torch.cuda.is_available():
+                return True
+            last = "torch.cuda.is_available() returned False"
+        except Exception as e:
+            last = str(e)
+        if attempt < retries:
+            print(f"{Colors.YELLOW}CUDA not available (attempt {attempt}/{retries}: {last}); retrying...{Colors.RESET}")
+            time.sleep(delay_s)
+    return False
 
 
 def pick_device() -> str:
@@ -73,10 +145,23 @@ def pick_device() -> str:
     (e.g. via compatible cubins/PTX). We therefore only fall back to CPU when
     CUDA actually fails at runtime.
     """
-    if os.environ.get("DEEPSEEK_OCR_FORCE_CPU", "").lower() in ("1", "true", "yes"):
+    if _force_cpu():
+        print(f"{Colors.YELLOW}CPU forced by DEEPSEEK_OCR_FORCE_CPU=1.{Colors.RESET}")
         return "cpu"
-    if not torch.cuda.is_available():
+
+    _ensure_cuda_visible_devices_default()
+
+    if not _cuda_available_with_retry(retries=3, delay_s=1.0):
+        smi = _nvidia_smi_summary()
+        if smi and not _truthy_env("DEEPSEEK_OCR_CUDA_REINIT"):
+            # CUDA init can intermittently fail after long idle; a fresh process often recovers.
+            restart_self_cuda_reinit("CUDA reported unavailable but nvidia-smi sees GPU(s)")
+        msg = "CUDA not available; falling back to CPU"
+        if smi:
+            msg += f" (nvidia-smi: {smi.splitlines()[0]})"
+        print(f"{Colors.YELLOW}{msg}.{Colors.RESET}")
         return "cpu"
+
     try:
         cap = torch.cuda.get_device_capability(0)
         arch = f"sm_{cap[0]}{cap[1]}"
@@ -151,6 +236,15 @@ if __name__ == "__main__":
         # avoids trying to copy tensors off a broken GPU.
         if device == "cuda" and _is_cuda_failure(e):
             print(f"{Colors.YELLOW}CUDA inference failed ({e}).{Colors.RESET}")
+            # First, try one clean restart to re-init CUDA. If we've already tried, go CPU-only.
+            if not _truthy_env("DEEPSEEK_OCR_CUDA_RECOVERY"):
+                env = os.environ.copy()
+                env["DEEPSEEK_OCR_CUDA_RECOVERY"] = "1"
+                env.pop("DEEPSEEK_OCR_FORCE_CPU", None)
+                if env.get("CUDA_VISIBLE_DEVICES", "").strip() == "":
+                    env["CUDA_VISIBLE_DEVICES"] = "0"
+                print(f"{Colors.YELLOW}Attempting one CUDA recovery restart...{Colors.RESET}")
+                os.execvpe(sys.executable, [sys.executable] + sys.argv, env)
             restart_self_cpu_only()
         print(f'{Colors.RED}Inference failed: {e}{Colors.RESET}')
         sys.exit(1)

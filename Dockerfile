@@ -5,7 +5,7 @@
 # Run:   docker run --gpus all -p 8002:8002 -p 3001:3000 -v ./deepseek-ocr:/app/deepseek-ocr:ro deepseek-ocr-web
 
 # NVIDIA PyTorch container with CUDA support (works on ARM64)
-FROM nvcr.io/nvidia/pytorch:24.08-py3
+FROM nvcr.io/nvidia/pytorch:25.12-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -30,14 +30,6 @@ WORKDIR /app
 # Copy requirements and install Python dependencies
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
-
-# PyTorch for GB10 / Blackwell-family GPUs
-# Use official CUDA 13.0 (cu130) wheels. On GB10 (sm_121) these wheels typically ship
-# sm_120 + compute_120 PTX, so PyTorch may warn about supported capability, but CUDA
-# ops can still work.
-RUN pip install --no-cache-dir --upgrade \
-    torch==2.10.0+cu130 torchvision==0.25.0+cu130 torchaudio==2.10.0+cu130 \
-    --index-url https://download.pytorch.org/whl/cu130
 
 # flash-attn is optional, but when upgrading PyTorch (e.g. to nightly cu128),
 # any prebuilt flash-attn binaries can become ABI-incompatible and break model

@@ -2,7 +2,7 @@
 
 Complete guide for running DeepSeek-OCR-Web in Docker with GPU support.
 
-**Optimized for Nvidia DGX Spark**: This setup is tailored for the Nvidia DGX Spark environment using PyTorch CUDA 13 (`cu130`) wheels for Blackwell-family GPU support. On GB10 (`sm_121`) you may still see a PyTorch warning about supported CUDA capability; this is expected and does not necessarily mean GPU inference will fail.
+**Optimized for Nvidia DGX Spark**: This setup is tailored for the Nvidia DGX Spark environment using the NVIDIA NGC PyTorch `25.12` base image (PyTorch built with CUDA 13.1) for Blackwell-family GPU support. On GB10 (`sm_121`) you may still see a PyTorch warning about supported CUDA capability; this is expected and does not necessarily mean GPU inference will fail.
 
 ## Table of Contents
 
@@ -88,7 +88,7 @@ docker compose up -d
 ```
 
 **Note (Nvidia DGX Spark / Blackwell)**:
-- The Docker build installs **official PyTorch CUDA 13.0 (`cu130`)** wheels. On GB10 (`sm_121`), current wheels typically ship `sm_120` + `compute_120` PTX; you may still see a warning like “supported capability ... (8.0) - (12.0)”. The first build can take a while and download several GB of wheels.
+- The Docker build uses the **NVIDIA NGC PyTorch `25.12-py3`** base image (PyTorch built with CUDA 13.1). On GB10 (`sm_121`), current builds typically ship `sm_120` + `compute_120` PTX; you may still see a warning like “supported capability ... (8.0) - (12.0)”.
 - `flash-attn` is intentionally **not installed** in Docker to avoid ABI mismatches when upgrading PyTorch.
 
 ### Option 2: Docker CLI
@@ -233,7 +233,8 @@ docker compose -f docker-compose.dev.yml up
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MODEL_PATH` | `/app/deepseek-ocr` | Path to model weights |
-| `CUDA_VISIBLE_DEVICES` | `0` | GPU device ID |
+| `CUDA_VISIBLE_DEVICES` | `0` | GPU device ID (set to `0`; to force CPU use `DEEPSEEK_OCR_FORCE_CPU=1`) |
+| `DEEPSEEK_OCR_FORCE_CPU` | *(unset)* | Force CPU inference (hides GPUs; skips all CUDA attempts) |
 | `PYTORCH_JIT` | `0` | Disable JIT compilation |
 
 ### Volume Mounts
@@ -277,7 +278,7 @@ The Docker image is ~17 GB. Here's what takes up space:
 
 ### Why So Large?
 
-The base image (`nvcr.io/nvidia/pytorch:24.08-py3`) includes:
+The base image (`nvcr.io/nvidia/pytorch:25.12-py3`) includes:
 - Full CUDA toolkit (~3 GB)
 - PyTorch with CUDA (~2.5 GB)
 - cuDNN, NCCL, TensorRT (~5 GB)
@@ -286,7 +287,7 @@ The base image (`nvcr.io/nvidia/pytorch:24.08-py3`) includes:
 ### Version Compatibility
 
 The following versions are pinned for compatibility:
-- **numpy < 2.0**: NVIDIA container's PyTorch requires NumPy 1.x
+- **PyTorch + CUDA**: Provided by NVIDIA NGC base image `nvcr.io/nvidia/pytorch:25.12-py3` (CUDA 13.1, Python 3.12)
 - **transformers == 4.45.0**: Compatible with DeepSeek-OCR model
 
 These are automatically handled in the Dockerfile.
@@ -339,7 +340,8 @@ Mitigations used by this repo:
 - `PYTORCH_JIT=0` environment variable
 - Force **eager attention** in HF runners (avoids flash/SDPA fused kernels)
 - Force **math-only SDPA** when the GPU arch is not explicitly supported by the installed PyTorch build
-- On fatal CUDA errors (e.g. `unspecified launch failure`), the HF runner will **restart itself in CPU-only mode** to avoid interacting with a broken CUDA context
+- If CUDA looks unavailable (often after long idle), the HF runner will **retry a few times** and can **restart once** to re-initialize CUDA when `nvidia-smi` still sees GPU(s)
+- On fatal CUDA errors (e.g. `unspecified launch failure`), the HF runner will first **attempt one clean restart** to recover CUDA; if it fails again, it will **restart in CPU-only mode** (`DEEPSEEK_OCR_FORCE_CPU=1`) to avoid interacting with a broken CUDA context
 
 If you see `nvidia-smi` showing `ERR!` or Docker reporting NVML errors like `gpu requires reset`, the GPU is in a bad state and typically needs a **reboot (or power-cycle)** before CUDA will work again.
 
