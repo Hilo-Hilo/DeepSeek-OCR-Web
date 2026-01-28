@@ -1,0 +1,50 @@
+Metadata-Version: 2.4
+Name: docr
+Version: 0.1.0
+Summary: DeepSeek OCR CLI
+Author: DeepSeek OCR CLI
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.1
+Requires-Dist: requests>=2.31
+Requires-Dist: rich>=13.7
+Requires-Dist: websocket-client>=1.7
+
+# docr
+
+DeepSeek OCR CLI for the HTTP API.
+
+## Install
+
+```bash
+pip install -e packages/cli
+```
+
+## Usage
+
+```bash
+# Convert files (fire-and-forget)
+docr /path/to/doc.pdf
+
+docr convert /path/to/a.pdf /path/to/b.png
+
+# Check status
+docr status <task_id>
+
+# List recent jobs
+docr list
+
+# Stream logs
+docr logs <task_id>
+
+# Download result markdown
+docr download <task_id> [--output /path/to/file.md]
+
+# Cancel task
+docr cancel <task_id>
+```
+
+## Config
+
+Set `DGX_OCR_BASE_URL` to override the API base URL. Default: `http://100.111.126.23:8002`.

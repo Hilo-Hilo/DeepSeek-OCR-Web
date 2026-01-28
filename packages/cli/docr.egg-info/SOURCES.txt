@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+docr/__init__.py
+docr/__main__.py
+docr/cli.py
+docr/client.py
+docr/utils.py
+docr.egg-info/PKG-INFO
+docr.egg-info/SOURCES.txt
+docr.egg-info/dependency_links.txt
+docr.egg-info/entry_points.txt
+docr.egg-info/requires.txt
+docr.egg-info/top_level.txt

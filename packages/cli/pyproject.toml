@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docr"
+version = "0.1.0"
+description = "DeepSeek OCR CLI"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+  { name = "DeepSeek OCR CLI" }
+]
+dependencies = [
+  "click>=8.1",
+  "requests>=2.31",
+  "rich>=13.7",
+  "websocket-client>=1.7"
+]
+
+[project.scripts]
+docr = "docr.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["docr*"]
