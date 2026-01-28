@@ -25,8 +25,7 @@ pip install -e packages/cli
 
 ```bash
 # Convert files (fire-and-forget)
-docr /path/to/doc.pdf
-
+docr convert /path/to/doc.pdf
 docr convert /path/to/a.pdf /path/to/b.png
 
 # Check status

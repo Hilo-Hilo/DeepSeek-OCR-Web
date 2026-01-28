@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 docr/__init__.py
 docr/__main__.py
+docr/background.py
 docr/cli.py
 docr/client.py
 docr/utils.py

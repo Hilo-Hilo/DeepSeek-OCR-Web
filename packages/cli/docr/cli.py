@@ -1,5 +1,6 @@
 import os
-import threading
+import subprocess
+import sys
 import time
 from typing import Optional
 
@@ -98,15 +99,20 @@ def convert_cmd(ctx: click.Context, pdf_paths: tuple, prompt: str) -> None:
             progress.update(task, description=f"Started {path} -> {task_id}")
             progress.remove_task(task)
 
-            t = threading.Thread(
-                target=_poll_and_download,
-                args=(client, task_id, path),
-                daemon=True,
+            # Spawn background process to poll and download when complete
+            # This survives the CLI exit (unlike daemon threads)
+            output_path = derive_output_path(os.path.abspath(path))
+            background_script = os.path.join(os.path.dirname(__file__), "background.py")
+            subprocess.Popen(
+                [sys.executable, background_script, client.base_url, task_id, output_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from parent
             )
-            t.start()
 
             _print_logs(client, task_id, duration_s=30)
             console.print(f"[green]Task started:[/green] {task_id}")
+            console.print(f"Output will be saved to: {output_path}")
             console.print(f"Check status with: docr status {task_id}")
 
 
