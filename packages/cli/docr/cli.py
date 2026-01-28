@@ -66,7 +66,6 @@ def _start_task(client: DocrClient, source_path: str, prompt: str = "") -> str:
 
 @click.group(
     context_settings={"help_option_names": ["-h", "--help"]},
-    invoke_without_command=True,
 )
 @click.version_option()
 @click.pass_context
@@ -75,13 +74,6 @@ def main(ctx: click.Context) -> None:
     ctx.obj = {
         "client": DocrClient(),
     }
-    if ctx.invoked_subcommand is None and ctx.args:
-        pdf_paths = []
-        for raw in ctx.args:
-            if not os.path.isfile(raw):
-                raise click.ClickException(f"File not found: {raw}")
-            pdf_paths.append(raw)
-        convert_cmd.callback(ctx, tuple(pdf_paths), prompt="")
 
 
 @main.command(name="convert")
