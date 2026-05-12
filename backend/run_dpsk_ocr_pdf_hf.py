@@ -1,16 +1,18 @@
+from __future__ import annotations
+
+import argparse
 import os
 import sys
 import time
 import subprocess
 import io
 import re
-import torch
 import warnings
-import fitz
-from PIL import Image
-from transformers import AutoModel, AutoTokenizer
-from config import *
 import contextlib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 class Colors:
     RED = "\033[91m"
@@ -21,6 +23,50 @@ class Colors:
 
 # Disable JIT if needed
 os.environ["PYTORCH_JIT"] = "0"
+
+DEFAULT_MODEL_ID = "deepseek-ai/DeepSeek-OCR-2"
+
+def _load_legacy_config() -> dict | None:
+    """Best-effort backward compat: allow running without CLI args via legacy `config.py`."""
+    try:
+        import config as legacy  # type: ignore
+    except Exception:
+        return None
+
+    def get(name: str, default=None):
+        return getattr(legacy, name, default)
+
+    return {
+        "MODEL_PATH": get("MODEL_PATH"),
+        "INPUT_PATH": get("INPUT_PATH"),
+        "OUTPUT_PATH": get("OUTPUT_PATH"),
+        "PROMPT": get("PROMPT"),
+        "BASE_SIZE": get("BASE_SIZE", 1024),
+        "IMAGE_SIZE": get("IMAGE_SIZE", 768),
+        "CROP_MODE": get("CROP_MODE", True),
+    }
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="DeepSeek-OCR-2 PDF inference (HF Transformers).")
+    p.add_argument("--model-path", dest="model_path", default=None, help="HF repo id or local path")
+    p.add_argument("--input-path", dest="input_path", default=None, help="Input PDF or image path")
+    p.add_argument("--output-path", dest="output_path", default=None, help="Output directory")
+    p.add_argument("--prompt", dest="prompt", default=None, help="Prompt text (include <image> tag)")
+    p.add_argument("--base-size", dest="base_size", type=int, default=None, help="Base size (default 1024)")
+    p.add_argument("--image-size", dest="image_size", type=int, default=None, help="Crop tile size (default 768)")
+    crop = p.add_mutually_exclusive_group()
+    crop.add_argument("--crop-mode", dest="crop_mode", action="store_true", help="Enable crop mode")
+    crop.add_argument("--no-crop-mode", dest="crop_mode", action="store_false", help="Disable crop mode")
+    p.set_defaults(crop_mode=None)
+    p.add_argument(
+        "--attn-implementation",
+        dest="attn_implementation",
+        default=None,
+        choices=["eager", "sdpa", "flash_attention_2"],
+        help="Attention implementation (default: eager; set flash_attention_2 if flash-attn is installed)",
+    )
+    p.add_argument("--pdf-dpi", dest="pdf_dpi", type=int, default=144, help="PDF render DPI (default: 144)")
+    return p.parse_args()
 
 def _truthy_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
@@ -49,8 +95,13 @@ _ensure_cuda_visible_devices_default()
 
 warnings.filterwarnings("ignore")
 
+def _get_torch():
+    import torch  # type: ignore
+    return torch
+
 def _cuda_arch() -> str | None:
     try:
+        torch = _get_torch()
         cap = torch.cuda.get_device_capability(0)
         return f"sm_{cap[0]}{cap[1]}"
     except Exception:
@@ -60,6 +111,7 @@ def _cuda_arch() -> str | None:
 def _force_safe_sdpa_kernels(reason: str) -> None:
     """Force SDPA to use math kernels (avoid flash/mem-efficient)."""
     try:
+        torch = _get_torch()
         torch.backends.cuda.enable_flash_sdp(False)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(True)
@@ -73,6 +125,7 @@ def configure_cuda_stability() -> None:
     if _force_cpu():
         return
     try:
+        torch = _get_torch()
         if not torch.cuda.is_available():
             return
     except Exception as e:
@@ -129,6 +182,7 @@ def _cuda_available_with_retry(retries: int = 3, delay_s: float = 1.0) -> bool:
     last: str | None = None
     for attempt in range(1, retries + 1):
         try:
+            torch = _get_torch()
             if torch.cuda.is_available():
                 return True
             last = "torch.cuda.is_available() returned False"
@@ -139,9 +193,62 @@ def _cuda_available_with_retry(retries: int = 3, delay_s: float = 1.0) -> bool:
             time.sleep(delay_s)
     return False
 
+def _pick_attn_implementation(requested: str | None) -> str:
+    v = (requested or os.environ.get("DEEPSEEK_OCR_ATTN_IMPLEMENTATION") or "eager").strip().lower()
+    if v in ("flash", "fa2"):
+        return "flash_attention_2"
+    if v not in ("eager", "sdpa", "flash_attention_2"):
+        return "eager"
+    return v
+
+def _from_pretrained_with_attn(model_path: str, attn_impl: str):
+    """Load model with the best-supported attn kwarg.
+
+    DeepSeek-OCR-2 docs use `_attn_implementation`; some Transformers versions prefer
+    `attn_implementation`. Try both, but only fall back when the error is about an
+    unsupported kwarg.
+    """
+    from transformers import AutoModel  # type: ignore
+    try:
+        return AutoModel.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            use_safetensors=True,
+            _attn_implementation=attn_impl,
+        )
+    except Exception as e:
+        msg = str(e)
+        if "_attn_implementation" not in msg and "unexpected keyword" not in msg.lower():
+            raise
+        return AutoModel.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            use_safetensors=True,
+            attn_implementation=attn_impl,
+        )
+
+def _load_model(model_path: str, attn_impl: str):
+    from transformers import AutoTokenizer  # type: ignore
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    try:
+        model = _from_pretrained_with_attn(model_path, attn_impl)
+        return tokenizer, model
+    except Exception as e:
+        if attn_impl == "flash_attention_2":
+            print(
+                f"{Colors.YELLOW}Warning: failed to load with flash_attention_2 ({e}). "
+                f"Falling back to eager attention.{Colors.RESET}"
+            )
+            tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+            model = _from_pretrained_with_attn(model_path, "eager")
+            return tokenizer, model
+        raise
+
 
 def pdf_to_images_high_quality(pdf_path: str, dpi: int = 144) -> list[Image.Image]:
     """Render a PDF into a list of PIL images (one per page)."""
+    import fitz  # type: ignore
+    from PIL import Image  # type: ignore
     images: list[Image.Image] = []
     doc = fitz.open(pdf_path)
     zoom = dpi / 72.0
@@ -207,6 +314,7 @@ def pick_device() -> str:
         return "cpu"
 
     try:
+        torch = _get_torch()
         cap = torch.cuda.get_device_capability(0)
         arch = f"sm_{cap[0]}{cap[1]}"
         arch_list = torch.cuda.get_arch_list()
@@ -221,28 +329,49 @@ def pick_device() -> str:
 
 if __name__ == "__main__":
     def main() -> None:
-        configure_cuda_stability()
-        print(f'{Colors.BLUE}Loading DeepSeek OCR model (Hugging Face Transformers)...{Colors.RESET}')
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
-        model = AutoModel.from_pretrained(
-            MODEL_PATH,
-            trust_remote_code=True,
-            use_safetensors=True,
-            attn_implementation="eager",
+        args = _parse_args()
+        legacy = _load_legacy_config() or {}
+
+        model_path = (
+            args.model_path
+            or os.environ.get("MODEL_PATH")
+            or legacy.get("MODEL_PATH")
+            or DEFAULT_MODEL_ID
         )
+        input_path = args.input_path or legacy.get("INPUT_PATH")
+        output_path = args.output_path or legacy.get("OUTPUT_PATH")
+        prompt = args.prompt or legacy.get("PROMPT") or "<image>\n<|grounding|>Convert the document to markdown."
+        base_size = int(args.base_size or legacy.get("BASE_SIZE") or 1024)
+        image_size = int(args.image_size or legacy.get("IMAGE_SIZE") or 768)
+        crop_mode = bool(args.crop_mode if args.crop_mode is not None else legacy.get("CROP_MODE", True))
+        attn_impl = _pick_attn_implementation(args.attn_implementation)
+        pdf_dpi = int(args.pdf_dpi or 144)
+
+        if not input_path or not output_path:
+            print(f"{Colors.RED}Missing required arguments: --input-path and --output-path{Colors.RESET}")
+            sys.exit(2)
+
+        configure_cuda_stability()
+
+        print(f'{Colors.BLUE}Loading DeepSeek-OCR-2 model (Hugging Face Transformers)...{Colors.RESET}')
+        print(f"{Colors.BLUE}Model: {model_path}{Colors.RESET}")
+        tokenizer, model = _load_model(model_path, attn_impl)
 
         device = pick_device()
         model = model.eval()
         if device == "cuda":
             try:
+                torch = _get_torch()
                 model = model.cuda().to(torch.bfloat16)
                 print(f'{Colors.GREEN}Model loaded successfully on CUDA!{Colors.RESET}')
             except Exception as e:
                 print(f"{Colors.YELLOW}Warning: Failed to move model to CUDA ({e}). Falling back to CPU.{Colors.RESET}")
                 device = "cpu"
+                torch = _get_torch()
                 model = model.to("cpu").to(torch.float32)
                 print(f'{Colors.GREEN}Model loaded successfully on CPU.{Colors.RESET}')
         else:
+            torch = _get_torch()
             model = model.to("cpu").to(torch.float32)
             print(f'{Colors.GREEN}Model loaded successfully on CPU.{Colors.RESET}')
 
@@ -269,12 +398,12 @@ if __name__ == "__main__":
             try:
                 model.infer(
                     tokenizer,
-                    prompt=PROMPT,
+                    prompt=prompt,
                     image_file=image_path,
                     output_path=out_dir,
-                    base_size=BASE_SIZE,
-                    image_size=IMAGE_SIZE,
-                    crop_mode=CROP_MODE,
+                    base_size=base_size,
+                    image_size=image_size,
+                    crop_mode=crop_mode,
                     save_results=True,
                 )
             except Exception as e:
@@ -292,20 +421,19 @@ if __name__ == "__main__":
                     restart_self_cpu_only()
                 raise
 
-        input_path = str(INPUT_PATH)
         if input_path.lower().endswith(".pdf"):
             try:
-                pages = pdf_to_images_high_quality(input_path, dpi=144)
+                pages = pdf_to_images_high_quality(input_path, dpi=pdf_dpi)
             except Exception as e:
                 print(f"{Colors.RED}Inference failed: Failed to render PDF ({e}){Colors.RESET}")
                 sys.exit(1)
 
             combined_parts: list[str] = []
-            os.makedirs(OUTPUT_PATH, exist_ok=True)
+            os.makedirs(output_path, exist_ok=True)
 
             for idx, page_img in enumerate(pages, start=1):
                 page_rel = f"pages/page_{idx:03d}"
-                page_out_dir = os.path.join(OUTPUT_PATH, page_rel)
+                page_out_dir = os.path.join(output_path, page_rel)
                 os.makedirs(page_out_dir, exist_ok=True)
 
                 page_image_path = os.path.join(page_out_dir, f"page_{idx:03d}.png")
@@ -338,14 +466,14 @@ if __name__ == "__main__":
             # Write a combined root-level result.mmd for convenience (download/preview).
             if combined_parts:
                 combined = ("\n\n<--- Page Split --->\n\n").join(combined_parts).strip() + "\n"
-                open(os.path.join(OUTPUT_PATH, "result.mmd"), "w", encoding="utf-8").write(combined)
+                open(os.path.join(output_path, "result.mmd"), "w", encoding="utf-8").write(combined)
 
-            print(f'{Colors.GREEN}OCR complete! Results saved to {OUTPUT_PATH}{Colors.RESET}')
+            print(f'{Colors.GREEN}OCR complete! Results saved to {output_path}{Colors.RESET}')
         else:
             # Fallback: treat input as an image (should not happen for PDF tasks, but keeps script robust).
             try:
-                infer_once(input_path, OUTPUT_PATH)
-                print(f'{Colors.GREEN}OCR complete! Results saved to {OUTPUT_PATH}{Colors.RESET}')
+                infer_once(input_path, output_path)
+                print(f'{Colors.GREEN}OCR complete! Results saved to {output_path}{Colors.RESET}')
             except Exception as e:
                 print(f'{Colors.RED}Inference failed: {e}{Colors.RESET}')
                 sys.exit(1)

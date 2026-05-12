@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-This project is a multimodal document parsing tool based on DeepSeek-OCR with Next.js frontend and FastAPI backend.
+This project is a multimodal document parsing tool based on **DeepSeek-OCR-2** with Next.js frontend and FastAPI backend.
 
 **Designed for Nvidia DGX Spark**: This repository is optimized for the Nvidia DGX Spark environment. Docker builds use the NVIDIA NGC PyTorch `25.12` base image (PyTorch built with CUDA 13.1). On GB10 (`sm_121`) you may still see a PyTorch warning about supported CUDA capability; this is expected and does not necessarily mean GPU inference will fail.
 
@@ -15,7 +15,7 @@ This tool can efficiently process PDF documents and images, providing powerful O
 ### Key Features
 
 - **Multi-format Document Parsing**: Supports uploading and parsing documents in various formats such as PDF and images
-- **Intelligent OCR Recognition**: Based on the DeepSeek-OCR model, providing high-precision text recognition
+- **Intelligent OCR Recognition**: Based on the **DeepSeek-OCR-2** model, providing high-precision text recognition
 - **Layout Analysis**: Intelligently recognizes document layout structure and accurately extracts content layout
 - **Multi-language Support**: Supports text recognition in multiple languages including Chinese and English
 - **Table & Chart Parsing**: Professional table recognition and chart data extraction functionality
@@ -86,7 +86,7 @@ Docker provides the easiest setup with all dependencies pre-configured, specific
 # 1. Download model weights
 pip install modelscope
 mkdir -p ./deepseek-ocr
-modelscope download --model deepseek-ai/DeepSeek-OCR --local_dir ./deepseek-ocr
+modelscope download --model deepseek-ai/DeepSeek-OCR-2 --local_dir ./deepseek-ocr
 
 # 2. Build and run (Optimized for Nvidia DGX Spark)
 # Use --network=host if you have DNS issues
@@ -135,7 +135,7 @@ For full control over the installation process.
 ```bash
 pip install modelscope
 mkdir ./deepseek-ocr
-modelscope download --model deepseek-ai/DeepSeek-OCR --local_dir ./deepseek-ocr
+modelscope download --model deepseek-ai/DeepSeek-OCR-2 --local_dir ./deepseek-ocr
 ```
 
 #### Step 2: Setup Environment

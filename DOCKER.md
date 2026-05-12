@@ -76,7 +76,7 @@ This is the standard way to run on Nvidia DGX Spark.
 # 1. Download model weights (if not present)
 pip install modelscope
 mkdir -p ./deepseek-ocr
-modelscope download --model deepseek-ai/DeepSeek-OCR --local_dir ./deepseek-ocr
+modelscope download --model deepseek-ai/DeepSeek-OCR-2 --local_dir ./deepseek-ocr
 
 # 2. Build and run
 docker compose build

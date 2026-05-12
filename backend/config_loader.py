@@ -9,6 +9,7 @@ This module is responsible for:
 """
 
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -38,25 +39,45 @@ if not EXAMPLE_ENV_FILE.exists():
 
 # ========== Step 3. Load .env File ==========
 if not ENV_FILE.exists():
-    print("[Warning] .env file not found, created example .env.example.")
-    print("Please copy .env.example -> .env and fill in MODEL_PATH, then restart.")
+    print("[Info] .env file not found; using defaults (copy .env.example -> .env to override).")
 
 load_dotenv(ENV_FILE)
 
 
 # ========== Step 4. Read Configuration Items ==========
-MODEL_PATH = os.getenv("MODEL_PATH", None)
+# MODEL_PATH can be either:
+# - a local filesystem path (mounted into Docker), OR
+# - a Hugging Face model id (downloaded on first use via transformers)
+DEFAULT_MODEL_PATH = str(BASE_DIR / "deepseek-ocr")
+MODEL_PATH = os.getenv("MODEL_PATH", DEFAULT_MODEL_PATH)
 DEVICE_ID = os.getenv("DEVICE_ID", "0")
 MAX_CONCURRENCY = int(os.getenv("MAX_CONCURRENCY", "10"))
 
 
 # ========== Step 5. Check Model Path Validity ==========
-if MODEL_PATH is None or MODEL_PATH.strip() == "":
-    raise ValueError("Error: MODEL_PATH not set in .env, please fill in model path and restart service.")
+if MODEL_PATH is None or str(MODEL_PATH).strip() == "":
+    raise ValueError("Error: MODEL_PATH is empty. Set it to a local path or a Hugging Face model id.")
 
-if not Path(MODEL_PATH).exists():
-    print(f"[Warning] Specified model path does not exist: {MODEL_PATH}")
-    print("Please ensure DeepSeek-OCR model weights are downloaded.")
+_HF_MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]+/[A-Za-z0-9][A-Za-z0-9_.-]+$")
+
+def _is_probably_hf_model_id(s: str) -> bool:
+    s = (s or "").strip()
+    if not s:
+        return False
+    # Common local-path prefixes.
+    if s.startswith(("/", "./", "../", "~")):
+        return False
+    return bool(_HF_MODEL_ID_RE.match(s))
+
+_model_path_str = str(MODEL_PATH).strip()
+if not Path(_model_path_str).exists():
+    if _is_probably_hf_model_id(_model_path_str):
+        # Normal when using a HF model id like "deepseek-ai/DeepSeek-OCR-2".
+        print(f"[Info] MODEL_PATH not found on disk: {_model_path_str}")
+        print("[Info] Assuming MODEL_PATH is a Hugging Face model id; weights will be downloaded on first use.")
+    else:
+        print(f"[Warning] Specified model path does not exist: {_model_path_str}")
+        print("[Warning] Download DeepSeek-OCR-2 weights to this directory, or set MODEL_PATH to a HF model id.")
 
 
 # ========== Step 6. Automatically Create Working Directories ==========

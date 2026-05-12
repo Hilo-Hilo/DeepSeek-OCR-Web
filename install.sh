@@ -87,16 +87,17 @@ echo -e "${YELLOW}>>> Step 3. Installing PyTorch${RESET}"
 # Let pip resolve the best version for the platform (supports ARM64/CUDA if available)
 pip install torch torchvision torchaudio
 
-# 4. Install vLLM
-echo -e "${YELLOW}>>> Step 4. Installing vLLM${RESET}"
-# vLLM support for ARM64 can be experimental. We try standard pip install first.
-if pip install vllm; then
-    echo -e "${GREEN}vLLM installed successfully.${RESET}"
-else
-    echo -e "${RED}Standard vLLM install failed. This is expected on some ARM64 configs.${RESET}"
-    echo -e "${YELLOW}Attempting to build from source or continuing without it (Inference may fail)...${RESET}"
-    # In a real scenario, we might trigger a build from source here, but that's risky/long.
-    # We'll just warn the user.
+# 4. vLLM (Optional)
+echo -e "${YELLOW}>>> Step 4. vLLM (Optional)${RESET}"
+echo -e "${YELLOW}Skipping vLLM by default. The web backend uses Hugging Face Transformers for DeepSeek-OCR-2.${RESET}"
+echo -e "${YELLOW}To try vLLM anyway, re-run with INSTALL_VLLM=1 (may fail depending on platform/CUDA).${RESET}"
+if [ "${INSTALL_VLLM:-}" = "1" ]; then
+    echo -e "${YELLOW}Installing vLLM...${RESET}"
+    if pip install vllm; then
+        echo -e "${GREEN}vLLM installed successfully.${RESET}"
+    else
+        echo -e "${RED}vLLM install failed. Continuing without it.${RESET}"
+    fi
 fi
 
 # 5. Install Dependencies
@@ -111,7 +112,7 @@ pip install flash-attn --no-build-isolation || echo -e "${RED}flash-attn install
 echo -e "${YELLOW}>>> Step 6. Model Setup${RESET}"
 pip install modelscope
 mkdir -p ./deepseek-ocr
-modelscope download --model deepseek-ai/DeepSeek-OCR --local_dir ./deepseek-ocr || {
+modelscope download --model deepseek-ai/DeepSeek-OCR-2 --local_dir ./deepseek-ocr || {
     echo -e "${RED}Model download failed. Check network.${RESET}"
 }
 

@@ -5,7 +5,6 @@ DeepSeek OCR Backend Core Executor
 Supports:
 - Automatic PDF / Image detection
 - Real-time progress callbacks
-- Temporary config.py override
 - Task state JSON persistence
 - Runtime tracking
 - Console output streaming
@@ -28,6 +27,11 @@ from file_manager import detect_file_type, create_result_dir, list_result_files
 
 # Track running processes for cancellation
 _running_processes: Dict[str, subprocess.Popen] = {}
+
+# Default model runtime knobs (can be overridden via env vars)
+DEFAULT_BASE_SIZE = int(os.environ.get("DEEPSEEK_OCR_BASE_SIZE", "1024"))
+DEFAULT_IMAGE_SIZE = int(os.environ.get("DEEPSEEK_OCR_IMAGE_SIZE", "768"))
+DEFAULT_CROP_MODE = os.environ.get("DEEPSEEK_OCR_CROP_MODE", "1").strip().lower() not in ("0", "false", "no")
 
 # ====== Progress Parsing Helpers ======
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -56,12 +60,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # Use Hugging Face backend scripts (compatible with PyTorch nightly / Blackwell GPUs)
 PDF_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_pdf_hf.py"
 IMAGE_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_image_hf.py"
-# Fallback to vLLM scripts if HF scripts don't exist
-if not PDF_SCRIPT.exists():
-    PDF_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_pdf.py"
-if not IMAGE_SCRIPT.exists():
-    IMAGE_SCRIPT = PROJECT_ROOT / "run_dpsk_ocr_image.py"
-CONFIG_PATH = PROJECT_ROOT / "config.py"
+# NOTE: We intentionally do not fall back to vLLM scripts here. The web backend
+# is implemented around Transformers `model.infer(...)` for DeepSeek-OCR-2.
 
 
 # ====== Task State Persistence ======
@@ -140,31 +140,32 @@ def cancel_ocr_task(task_id: str) -> bool:
     return False
 
 
-# ====== Temporary config.py Override ======
-def override_config(model_path: str, input_path: str, output_path: str, prompt: str):
-    """Dynamically generate config.py for each task"""
-    config_lines = [
-        "# Auto-generated config for DeepSeek OCR",
-        "BASE_SIZE = 1024",
-        "IMAGE_SIZE = 640",
-        "CROP_MODE = True",
-        "MIN_CROPS = 2",
-        "MAX_CROPS = 6",
-        "MAX_CONCURRENCY = 10",
-        "NUM_WORKERS = 32",
-        "PRINT_NUM_VIS_TOKENS = False",
-        "SKIP_REPEAT = True",
-        "",
-        f"MODEL_PATH = r'{model_path}'",
-        f"INPUT_PATH = r'{input_path}'",
-        f"OUTPUT_PATH = r'{output_path}'",
-        f'PROMPT = """{prompt}"""',
-        "",
-        "from transformers import AutoTokenizer",
-        "TOKENIZER = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)",
+def _build_hf_command(
+    *,
+    script_path: Path,
+    model_path: str,
+    input_path: str,
+    output_path: str,
+    prompt: str,
+) -> list[str]:
+    cmd = [
+        "python",
+        str(script_path),
+        "--model-path",
+        model_path,
+        "--input-path",
+        input_path,
+        "--output-path",
+        output_path,
+        "--prompt",
+        prompt,
+        "--base-size",
+        str(DEFAULT_BASE_SIZE),
+        "--image-size",
+        str(DEFAULT_IMAGE_SIZE),
     ]
-    CONFIG_PATH.write_text("\n".join(config_lines), encoding="utf-8")
-    print(f"Temporary config.py override successful: {CONFIG_PATH}")
+    cmd.append("--crop-mode" if DEFAULT_CROP_MODE else "--no-crop-mode")
+    return cmd
 
 
 # ====== Core Task Execution ======
@@ -220,9 +221,7 @@ def run_ocr_task(
         file_type = detect_file_type(input_path)
         script_path = PDF_SCRIPT if file_type == "pdf" else IMAGE_SCRIPT
 
-        override_config(MODEL_PATH, input_path, str(result_dir), prompt)
-
-        print(f"Starting DeepSeek OCR task ({file_type.upper()})")
+        print(f"Starting DeepSeek-OCR-2 task ({file_type.upper()})")
         print(f"Using script: {script_path}")
         print(f"Output path: {result_dir}")
 
@@ -233,7 +232,13 @@ def run_ocr_task(
             print(f"Task {task_id} cancelled before spawn")
             return {"status": "cancelled", "message": "Task was cancelled by user", "runtime": runtime}
 
-        command = ["python", str(script_path)]
+        command = _build_hf_command(
+            script_path=script_path,
+            model_path=MODEL_PATH,
+            input_path=input_path,
+            output_path=str(result_dir),
+            prompt=prompt,
+        )
 
         process = subprocess.Popen(
             command,
@@ -355,13 +360,13 @@ def run_ocr_task(
         if process.returncode != 0:
             write_task_state(task_id, {
                 "status": "error", 
-                "message": "DeepSeek OCR execution failed",
+                "message": "DeepSeek-OCR-2 execution failed",
                 "filename": filename,
                 "original_filename": original_filename,
                 "timestamp": timestamp,
                 "runtime": runtime
             })
-            raise RuntimeError("DeepSeek OCR execution failed")
+            raise RuntimeError("DeepSeek-OCR-2 execution failed")
 
         files = list_result_files(result_dir)
         write_task_state(task_id, {

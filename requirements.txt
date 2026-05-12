@@ -1,4 +1,4 @@
-# DeepSeek-OCR-Web Dependencies
+# DeepSeek-OCR-Web Dependencies (DeepSeek-OCR-2)
 # For NVIDIA Blackwell (sm_121) ARM64 systems
 
 # Core ML/AI - PyTorch CUDA 13 (cu130) for Blackwell-family GPUs
@@ -7,10 +7,11 @@
 #     torch==2.10.0+cu130 torchvision==0.25.0+cu130 torchaudio==2.10.0+cu130 \
 #     --index-url https://download.pytorch.org/whl/cu130
 
-# Hugging Face
-transformers==4.45.0
+# Hugging Face (DeepSeek-OCR-2 recommended)
+# See: https://huggingface.co/deepseek-ai/DeepSeek-OCR-2
+transformers==4.46.3
 accelerate>=1.12.0
-tokenizers>=0.20.0
+tokenizers==0.20.3
 
 # PDF/Image Processing
 PyMuPDF>=1.26.0
